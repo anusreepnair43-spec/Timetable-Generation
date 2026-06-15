@@ -1,0 +1,2764 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Faculty Dashboard</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- Session Manager with better error handling -->
+  <script>
+    // Fallback SessionManager if file fails to load
+    window.SessionManager = window.SessionManager || {
+      SESSION_KEY: 'app_session',
+
+      getSession() {
+        const sessionData = localStorage.getItem(this.SESSION_KEY);
+        if (!sessionData) return null;
+        try {
+          return JSON.parse(sessionData);
+        } catch {
+          return null;
+        }
+      },
+
+      setSession(role, userData = {}) {
+        const session = {
+          loggedIn: true,
+          role: role,
+          username: userData.username || userData.email,
+          timestamp: Date.now(),
+          lastActivity: Date.now(),
+          userData: userData
+        };
+        localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+        return session;
+      },
+
+      clearSession() {
+        localStorage.removeItem(this.SESSION_KEY);
+      },
+
+      getDashboardPath(role) {
+        const paths = {
+          admin: 'admin.html',
+          faculty: 'faculty.html',
+          student: 'student.html'
+        };
+        return paths[role] || 'index.html';
+      },
+
+      redirectToDashboard(role) {
+        window.location.href = this.getDashboardPath(role);
+      },
+
+      forceLogout(message) {
+        console.log("Force logout:", message);
+        if (message) sessionStorage.setItem('logout_message', message);
+        this.clearSession();
+        window.location.href = 'index.html';
+      },
+
+      validatePageAccess() {
+        const session = this.getSession();
+        const currentPath = window.location.pathname.split('/').pop() || 'index.html';
+
+        if (!session || !session.loggedIn) {
+          if (!currentPath.includes('index.html')) {
+            console.log("No session, redirecting to login");
+            this.forceLogout('Please login first');
+          }
+          return false;
+        }
+
+        // Check if current page matches role
+        if (session.role === 'faculty' && !currentPath.includes('faculty.html')) {
+          this.redirectToDashboard('faculty');
+          return false;
+        }
+
+        return true;
+      }
+    };
+
+    // Try to load actual Session Manager, but fallback is already defined
+  </script>
+  <script src="/session-manager.js" onerror="console.log('Session manager file not found, using fallback')"></script>
+
+  <style>
+    /* Your existing CSS remains exactly the same */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #1e3a8a, #2563eb);
+      color: #1f2937;
+    }
+
+    /* HEADER - Simplified */
+    .top-header {
+      height: 70px;
+      background: #1e3a8a;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 600;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    /* LAYOUT */
+    .wrapper {
+      display: flex;
+      height: calc(100vh - 110px);
+      padding: 30px;
+      gap: 30px;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 240px;
+      background: white;
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      padding-top: 20px;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+    }
+
+    .sidebar h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #1e3a8a;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .sidebar a {
+      padding: 14px 22px;
+      color: #1e40af;
+      text-decoration: none;
+      cursor: pointer;
+      font-weight: 500;
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.3s ease;
+    }
+
+    .sidebar a i {
+      width: 20px;
+      font-size: 16px;
+    }
+
+    .sidebar a:hover:not(.active) {
+      background: #e0e7ff;
+      border-radius: 12px;
+      margin: 0 10px;
+    }
+
+    .sidebar a.active {
+      background: #1e40af;
+      color: white;
+      border-radius: 8px;
+    }
+
+    .sidebar a.active i {
+      color: white;
+    }
+
+    .logout {
+      margin: 20px;
+      margin-top: auto;
+      padding: 12px;
+      background: #ef4444;
+      color: white;
+      text-align: center;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .logout:hover {
+      background: #dc2626;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(239, 68, 68, 0.3);
+    }
+
+    /* MAIN */
+    .main {
+      flex: 1;
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+      overflow: auto;
+    }
+
+    /* CARD */
+    .card {
+      width: 100%;
+    }
+
+    .card h2 {
+      color: #1e3a8a;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card h3 {
+      color: #374151;
+      margin-top: 25px;
+      margin-bottom: 10px;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* TABLE */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+
+    th {
+      background: #1e40af;
+      color: white;
+      padding: 12px;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    td {
+      border: 1px solid #e5e7eb;
+      padding: 12px;
+      text-align: center;
+    }
+
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    tr:hover {
+      background: #eef2ff;
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 40px !important;
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    /* BUTTONS */
+    button {
+      padding: 10px 18px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      color: white;
+      margin-top: 15px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s ease;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+      flex-wrap: wrap;
+    }
+
+    .btn-submit {
+      background: #ef4444;
+    }
+
+    .btn-save {
+      background: #38b2ac;
+    }
+
+    .btn-reset {
+      background: #f59e0b;
+    }
+
+    .btn-primary {
+      background: #1e40af;
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    .back-to-back {
+      margin: 25px 0;
+      text-align: center;
+    }
+
+    .back-to-back h3 {
+      color: #1e3a8a;
+      margin-bottom: 10px;
+    }
+
+    /* MESSAGES */
+    .message-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      background: #f8fafc;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .message-item:hover {
+      transform: translateX(5px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .message-date {
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .message-text {
+      color: #1f2937;
+      line-height: 1.5;
+    }
+
+    /* MESSAGE BADGE */
+    .message-badge {
+      background: #ef4444;
+      color: white;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 8px;
+      position: absolute;
+      top: 8px;
+      right: 8px;
+    }
+
+    /* UNREAD MESSAGE */
+    .message-item.unread {
+      border-left: 4px solid #fbbf24;
+      background-color: #fffbeb;
+    }
+
+    /* FORM ELEMENTS */
+    select,
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: #1e40af;
+      box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    label {
+      margin-right: 15px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    input[type="radio"] {
+      margin-right: 5px;
+      accent-color: #1e40af;
+    }
+
+    /* WARNING MESSAGES */
+    .warning-message {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+      color: #92400e;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .warning-message.locked {
+      background: #fee2e2;
+      border-color: #ef4444;
+      color: #991b1b;
+    }
+
+    /* ALLOCATION STATUS */
+    .status-overloaded {
+      background-color: #f8d7da !important;
+      color: #721c24;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .status-underloaded {
+      background-color: #fff3cd !important;
+      color: #856404;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .status-balanced {
+      background-color: #d1e7dd !important;
+      color: #0f5132;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .status-full {
+      background-color: #d1c4e9 !important;
+      color: #311b92;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    /* SUBJECT TYPE BADGES */
+    .subject-badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .subject-theory {
+      background-color: #e8f4fd;
+      color: #004085;
+    }
+
+    .subject-lab {
+      background-color: #e8f5e8;
+      color: #155724;
+    }
+
+    .subject-project {
+      background-color: #f8e8fd;
+      color: #581b98;
+    }
+
+    /* SUMMARY BOX */
+    .summary-box {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 4px solid #1e40af;
+    }
+
+    /* LOAD INDICATOR */
+    .load-indicator {
+      height: 10px;
+      background: #e5e7eb;
+      border-radius: 5px;
+      margin: 5px 0;
+      overflow: hidden;
+    }
+
+    .load-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #3b82f6);
+      border-radius: 5px;
+      transition: width 0.3s ease;
+    }
+
+    /* LOADING OVERLAY */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+      backdrop-filter: blur(2px);
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #1e40af;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* NOTIFICATION */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px 25px;
+      border-radius: 8px;
+      color: white;
+      font-weight: 500;
+      z-index: 3000;
+      animation: slideInRight 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .notification.success {
+      background: #10b981;
+    }
+
+    .notification.error {
+      background: #ef4444;
+    }
+
+    .notification.warning {
+      background: #f59e0b;
+    }
+
+    .notification.info {
+      background: #3b82f6;
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* SESSION WARNING */
+    .session-warning {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      color: #92400e;
+      padding: 12px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      animation: slideDown 0.5s ease;
+    }
+
+    @keyframes slideDown {
+      from {
+        transform: translateY(-100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* TAB SYNC INDICATOR */
+    .tab-sync-indicator {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      padding: 10px 20px;
+      border-radius: 30px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      z-index: 100;
+      animation: fadeInUp 0.5s ease;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        transform: translateY(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .sync-icon {
+      color: #10b981;
+      animation: spin 2s linear infinite;
+    }
+
+    /* DEADLINE WARNING */
+    .deadline-timer {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e40af;
+    }
+
+    /* MOBILE */
+    @media(max-width:768px) {
+      .top-header {
+        flex-direction: column;
+        align-items: flex-start;
+        min-height: auto;
+        padding: 15px;
+      }
+
+      .wrapper {
+        flex-direction: column;
+        padding: 20px;
+      }
+
+      .sidebar {
+        width: 100%;
+        flex-direction: row;
+        overflow-x: auto;
+        border-radius: 12px;
+      }
+
+      .main {
+        padding: 20px;
+      }
+
+      th,
+      td {
+        font-size: 13px;
+        padding: 10px;
+      }
+
+      .message-badge {
+        position: relative;
+        top: 0;
+        right: 0;
+        margin-left: 5px;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+    }
+
+    /* NEW STYLES FOR ALLOCATIONS */
+    #refreshAllocBtn {
+      background: #1e40af;
+      margin-right: 10px;
+    }
+
+    .allocation-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <!-- Notification Container -->
+  <div id="notificationContainer"></div>
+
+  <div class="top-header">
+    Faculty Dashboard
+  </div>
+
+  <!-- SIMPLIFIED FACULTY INFO BAR - Dynamically populated from database -->
+  <div
+    style="background: white; margin: 0 30px 20px 30px; padding: 20px 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; border: 1px solid #e2e8f0;">
+    <div style="display: flex; align-items: center; gap: 20px;">
+      <div
+        style="width: 60px; height: 60px; background: #1e40af; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 28px;"
+        id="facultyAvatar">F</div>
+      <div>
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 8px;">
+          <span style="font-weight: 700; color: #1e293b; font-size: 22px;" id="facultyDisplayName">Loading...</span>
+          <span
+            style="background: #e9efff; color: #1e40af; padding: 6px 16px; border-radius: 30px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;"
+            id="facultyRole">Faculty</span>
+        </div>
+        <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+          <span style="font-size: 15px; color: #475569; display: flex; align-items: center; gap: 8px;"><i
+              class="fas fa-id-card" style="width: 18px; color: #2563eb;"></i> <span style="font-weight: 500;"
+              id="facultyUsername">-</span></span>
+          <span style="font-size: 15px; color: #475569; display: flex; align-items: center; gap: 8px;"><i
+              class="fas fa-building" style="width: 18px; color: #2563eb;"></i> <span style="font-weight: 500;"
+              id="facultyDepartment">-</span></span>
+          <span style="font-size: 15px; color: #475569; display: flex; align-items: center; gap: 8px;"><i
+              class="fas fa-briefcase" style="width: 18px; color: #2563eb;"></i> <span style="font-weight: 500;"
+              id="facultyExperience">-</span></span>
+          <span style="font-size: 15px; color: #475569; display: flex; align-items: center; gap: 8px;"><i
+              class="fas fa-envelope" style="width: 18px; color: #2563eb;"></i> <span style="font-weight: 500;"
+              id="facultyEmail">-</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrapper">
+
+    <div class="sidebar">
+      <h2>
+        Faculty
+      </h2>
+      <a class="active" onclick="showSection('preferences',this)">
+        Subject Preferences
+      </a>
+      <a onclick="showSection('timetable',this)">
+        My Timetable
+      </a>
+      <a onclick="showSection('allocation',this)">
+        My Allocations
+      </a>
+      <a onclick="showSection('timePreferences',this)">
+        Time Preferences
+      </a>
+      <a onclick="showSection('messages',this)" id="messagesLink">
+        Messages
+        <span class="message-badge" id="messageBadge" style="display:none; background:#ef4444; color:white; font-size:12px; min-width:18px; height:18px; line-height:18px; border-radius:999px; padding:0 6px; margin-left:8px; text-align:center;">0</span>
+      </a>
+      <a onclick="showSection('markAbsence',this)">
+        Mark Absence
+      </a>
+      <div style="flex:1"></div>
+      <div class="logout" onclick="logoutFaculty()">
+        Logout
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="card">
+
+        <!-- Session Warning -->
+        <div id="sessionWarning" class="session-warning" style="display: none;">
+          <i class="fas fa-exclamation-triangle"></i>
+          <span id="sessionWarningMessage">Your session will expire soon. Please save your work.</span>
+        </div>
+
+        <!-- SUBJECT PREFERENCES - KEPT EXACTLY THE SAME -->
+        <div id="preferences" class="section active">
+          <h2>
+            <i class="fas fa-star" style="color: #f59e0b;"></i>
+            Your Subject Preferences
+          </h2>
+
+          <!-- Deadline Timer -->
+          <div id="deadlineTimer" class="warning-message" style="display: none;">
+            <i class="fas fa-hourglass-half"></i>
+            Time remaining to submit preferences: <span class="deadline-timer" id="timeRemaining"></span>
+          </div>
+
+          <!-- THEORY TABLE -->
+          <h3>
+            <i class="fas fa-book" style="color: #1e40af;"></i>
+            Theory Subjects
+          </h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Subject</th>
+                <th>Code</th>
+                <th>Abbr</th>
+                <th>Sem</th>
+                <th>Credit</th>
+                <th>Weekly Hours</th>
+                <th>Type</th>
+                <th>Rank</th>
+              </tr>
+            </thead>
+            <tbody id="theoryTable">
+              <tr>
+                <td colspan="8" class="no-data">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- LAB TABLE -->
+          <h3>
+            <i class="fas fa-flask" style="color: #059669;"></i>
+            Lab / Project Subjects
+          </h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Subject</th>
+                <th>Code</th>
+                <th>Abbr</th>
+                <th>Sem</th>
+                <th>Credit</th>
+                <th>Weekly Hours</th>
+                <th>Rank</th>
+              </tr>
+            </thead>
+            <tbody id="labTable">
+              <tr>
+                <td colspan="7" class="no-data">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="button-group">
+            <button id="submitBtn" onclick="submitPreferences()" class="btn-submit">
+              <i class="fas fa-check-circle"></i> Submit Preferences
+            </button>
+            <button id="saveBtn" onclick="savePreferences()" class="btn-save">
+              <i class="fas fa-save"></i> Save Preferences
+            </button>
+            <button onclick="resetPreferences()" class="btn-reset">
+              <i class="fas fa-undo"></i> Reset Preferences
+            </button>
+          </div>
+
+          <!-- Deadline warning will appear here -->
+          <div id="deadlineWarning"></div>
+        </div>
+
+        <!-- TIMETABLE -->
+        <div id="timetable" class="section">
+          <h2>
+            <i class="fas fa-calendar-alt" style="color: #8b5cf6;"></i>
+            Your Timetable
+          </h2>
+          <table>
+            <thead>
+              <tr id="ttHeaderRow">
+                <th>Day</th>
+                <th colspan="5">Periods</th>
+              </tr>
+            </thead>
+            <tbody id="timetableBody"></tbody>
+          </table>
+        </div>
+
+        <!-- ALLOCATION DETAILS - SIMPLIFIED VERSION -->
+        <div id="allocation" class="section">
+          <h2>
+            <i class="fas fa-tasks" style="color: #059669;"></i>
+            Your Allocated Workload
+          </h2>
+
+          <div class="allocation-controls">
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label for="semesterFilter" style="margin: 0; font-weight: 600; color: #1e3a8a;">Semester:</label>
+                <select id="semesterFilter" style="width: auto; min-width: 150px; padding: 8px 12px;" onchange="loadAllocationDetails()">
+                  <option value="odd">Odd Semester</option>
+                  <option value="even">Even Semester</option>
+                  <option value="all">All Semesters</option>
+                </select>
+              </div>
+              <button onclick="loadAllocationDetails()" id="refreshAllocBtn" style="margin: 0;">
+                <i class="fas fa-sync-alt"></i> Refresh
+              </button>
+            </div>
+          </div>
+
+          <div id="allocationSummary" style="margin-bottom: 20px;"></div>
+
+          <div style="overflow-x: auto;">
+            <table id="allocationTable">
+              <thead>
+                <tr>
+                  <th>Subject Code</th>
+                  <th>Subject Name</th>
+                  <th>Type</th>
+                  <th>Weekly Hours</th>
+                  <th>Semester</th>
+                  <th>Allocated On</th>
+                </tr>
+              </thead>
+              <tbody id="allocationTableBody">
+                <tr>
+                  <td colspan="6" class="no-data">Click Refresh to load allocations...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TIME PREFERENCES -->
+        <div id="timePreferences" class="section">
+          <h2>
+            <i class="fas fa-clock" style="color: #8b5cf6;"></i>
+            Select Non-Preferred Days, Time Ranges & Reason
+          </h2>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Time Range</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <select id="day1">
+                    <option value="">Select Day</option>
+                    <option>Monday</option>
+                    <option>Tuesday</option>
+                    <option>Wednesday</option>
+                    <option>Thursday</option>
+                    <option>Friday</option>
+                    <option>Saturday</option>
+                  </select>
+                </td>
+                <td>
+                  <select id="time1">
+                    <option value="">Select Time</option>
+                    <option>Morning</option>
+                    <option>Forenoon</option>
+                    <option>Afternoon</option>
+                    <option>Evening</option>
+                  </select>
+                </td>
+                <td><textarea id="reason1" rows="2" placeholder="Enter reason..."></textarea></td>
+              </tr>
+              <tr>
+                <td>
+                  <select id="day2">
+                    <option value="">Select Day</option>
+                    <option>Monday</option>
+                    <option>Tuesday</option>
+                    <option>Wednesday</option>
+                    <option>Thursday</option>
+                    <option>Friday</option>
+                    <option>Saturday</option>
+                  </select>
+                </td>
+                <td>
+                  <select id="time2">
+                    <option value="">Select Time</option>
+                    <option>Morning</option>
+                    <option>Forenoon</option>
+                    <option>Afternoon</option>
+                    <option>Evening</option>
+                  </select>
+                </td>
+                <td><textarea id="reason2" rows="2" placeholder="Enter reason..."></textarea></td>
+              </tr>
+              <tr>
+                <td>
+                  <select id="day3">
+                    <option value="">Select Day</option>
+                    <option>Monday</option>
+                    <option>Tuesday</option>
+                    <option>Wednesday</option>
+                    <option>Thursday</option>
+                    <option>Friday</option>
+                    <option>Saturday</option>
+                  </select>
+                </td>
+                <td>
+                  <select id="time3">
+                    <option value="">Select Time</option>
+                    <option>Morning</option>
+                    <option>Forenoon</option>
+                    <option>Afternoon</option>
+                    <option>Evening</option>
+                  </select>
+                </td>
+                <td><textarea id="reason3" rows="2" placeholder="Enter reason..."></textarea></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="back-to-back">
+            <h3>
+              <i class="fas fa-arrows-alt-h"></i>
+              Can you take back-to-back classes?
+            </h3>
+            <label>
+              <input type="radio" name="backToBack" value="yes">
+              <i class="fas fa-check-circle" style="color: #10b981;"></i> Yes
+            </label>
+            <label>
+              <input type="radio" name="backToBack" value="no">
+              <i class="fas fa-times-circle" style="color: #ef4444;"></i> No
+            </label>
+          </div>
+
+          <button onclick="saveTimePreferences()" class="btn-primary">
+            <i class="fas fa-save"></i> Save Time Preferences
+          </button>
+        </div>
+
+        <!-- MESSAGES -->
+        <div id="messages" class="section">
+          <h2>
+            <i class="fas fa-envelope" style="color: #3b82f6;"></i>
+            Messages from Admin
+          </h2>
+          <div id="messagesContainer">
+            <div class="no-data">
+              <i class="fas fa-inbox" style="font-size: 40px; color: #9ca3af; margin-bottom: 10px;"></i><br>
+              No messages to display
+            </div>
+          </div>
+
+          <!-- Substitution Requests (extension inside existing Messages section) -->
+          <div style="margin-top: 20px;">
+            <h3 style="margin: 10px 0;">Substitution Requests</h3>
+            <div class="card" style="padding:0; overflow:hidden;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Time Slot</th>
+                    <th>Semester</th>
+                    <th>Message</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="subRequestsTableBody">
+                  <tr><td colspan="6" class="no-data">Loading requests...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- MARK ABSENCES -->
+        <div id="markAbsence" class="section">
+          <h2>Mark Absence</h2>
+          <div style="margin-bottom: 20px; background:#f8f9fa; padding:20px; border-radius:10px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+              <label style="display:block; margin-bottom:10px;">
+                <strong>Select Date:</strong><br>
+                <input type="date" id="absenceDate" style="margin-top:5px; padding:10px; width:100%; border-radius:8px; border:1px solid #cbd5e1;">
+              </label>
+              <label style="display:block; margin-bottom:10px;">
+                <strong>Select Semester:</strong><br>
+                <select id="absenceSemester" style="margin-top:5px; padding:10px; width:100%; border-radius:8px; border:1px solid #cbd5e1;">
+                  <option value="">Choose Semester</option>
+                  <option value="1">Semester 1</option>
+                  <option value="2">Semester 2</option>
+                  <option value="3">Semester 3</option>
+                  <option value="4">Semester 4</option>
+                  <option value="5">Semester 5</option>
+                  <option value="6">Semester 6</option>
+                  <option value="7">Semester 7</option>
+                  <option value="8">Semester 8</option>
+                </select>
+              </label>
+            </div>
+            
+            <div style="margin-top: 15px;">
+              <strong>Choose Time Slots:</strong><br>
+              <div id="slotsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 10px;">
+                <!-- Dynamically populated from /admin/timeslots -->
+                <div style="color: #64748b; font-size: 13px; font-style: italic;">Loading time slots...</div>
+              </div>
+            </div>
+
+            <button onclick="submitAbsence()" class="btn-submit" style="margin-top: 20px; width: 100%; justify-content: center; font-size: 16px; padding: 12px;">
+              <i class="fas fa-paper-plane"></i> Submit Absence Request
+            </button>
+          </div>
+
+          <h3>Your Reported Absences</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Slot</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="myAbsencesTable">
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab Sync Indicator -->
+  <div class="tab-sync-indicator" id="tabSyncIndicator" style="display: none;">
+    <i class="fas fa-sync-alt sync-icon"></i>
+    <span id="syncMessage">Synchronizing with other tabs...</span>
+  </div>
+
+  <script>
+    // Global variables
+    let theoryPreferences = [];
+    let labPreferences = [];
+    let messageRefreshInterval = null;
+    let allSubjects = [];
+    let subjectNameCache = {};
+    let sessionCheckInterval = null;
+    let lastActivityTime = Date.now();
+    let activeTabs = 1;
+    let deadlineInterval = null;
+    let facultyData = null; // Store faculty data globally
+
+    // ================== SESSION MANAGEMENT ==================
+
+    // Validate session on page load with better error handling
+    (function () {
+      console.log("Checking faculty session...");
+
+      // First check if we have a session
+      const session = SessionManager.getSession();
+      console.log("Current session:", session);
+
+      if (!session) {
+        console.log("No session found, redirecting to login");
+        // Check if we have a saved username in localStorage (backward compatibility)
+        const savedUsername = localStorage.getItem("username");
+        const savedRole = localStorage.getItem("role");
+
+        if (savedUsername && savedRole === "faculty") {
+          console.log("Found legacy session, creating new session");
+          // Create a new session from legacy data
+          SessionManager.setSession("faculty", { username: savedUsername });
+          // Continue loading
+        } else {
+          // No session at all, redirect to login
+          alert("Please login first");
+          window.location.href = "index.html";
+          return;
+        }
+      } else if (session.role !== "faculty") {
+        console.log("Wrong role, redirecting to login");
+        SessionManager.forceLogout("Unauthorized access");
+        return;
+      }
+
+      // Set username from session if not in localStorage
+      if (!localStorage.getItem("username") && session.username) {
+        localStorage.setItem("username", session.username);
+      }
+
+      // Update session activity
+      updateSessionActivity();
+
+      // Start session monitoring
+      startSessionMonitoring();
+
+      // Track tab count
+      updateTabCount();
+    })();
+
+    // Update session activity
+    function updateSessionActivity() {
+      lastActivityTime = Date.now();
+      const session = SessionManager.getSession();
+      if (session) {
+        session.lastActivity = lastActivityTime;
+        localStorage.setItem(SessionManager.SESSION_KEY, JSON.stringify(session));
+      }
+    }
+
+    // Start session monitoring
+    function startSessionMonitoring() {
+      // Check session every minute
+      sessionCheckInterval = setInterval(() => {
+        const session = SessionManager.getSession();
+        if (!session) {
+          // Session was cleared in another tab
+          showNotification("Session ended in another tab", "warning");
+          setTimeout(() => {
+            window.location.href = "index.html";
+          }, 2000);
+        } else {
+          // Check for inactivity (30 minutes)
+          const inactivityPeriod = Date.now() - lastActivityTime;
+          const WARNING_TIME = 25 * 60 * 1000; // 25 minutes
+          const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+          if (inactivityPeriod > SESSION_TIMEOUT) {
+            // Session timeout due to inactivity
+            SessionManager.forceLogout("Session expired due to inactivity");
+          } else if (inactivityPeriod > WARNING_TIME) {
+            // Show warning
+            showSessionWarning(`Your session will expire in ${Math.ceil((SESSION_TIMEOUT - inactivityPeriod) / 60000)} minutes due to inactivity.`);
+          }
+        }
+      }, 60000);
+
+      // Track user activity
+      ['click', 'keypress', 'scroll', 'mousemove'].forEach(event => {
+        document.addEventListener(event, updateSessionActivity);
+      });
+    }
+
+    // Show session warning
+    function showSessionWarning(message) {
+      const warningDiv = document.getElementById('sessionWarning');
+      const warningMsg = document.getElementById('sessionWarningMessage');
+      warningMsg.textContent = message;
+      warningDiv.style.display = 'flex';
+
+      // Auto-hide after 10 seconds
+      setTimeout(() => {
+        warningDiv.style.display = 'none';
+      }, 10000);
+    }
+
+    // Update tab count
+    function updateTabCount() {
+      // Generate unique tab ID if not exists
+      let tabId = sessionStorage.getItem('faculty_tab_id');
+      if (!tabId) {
+        tabId = 'tab_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        sessionStorage.setItem('faculty_tab_id', tabId);
+      }
+
+      // Track active tabs
+      const tabs = JSON.parse(localStorage.getItem('faculty_active_tabs') || '{}');
+      tabs[tabId] = Date.now();
+
+      // Clean up old tabs (inactive for more than 10 seconds)
+      const now = Date.now();
+      Object.keys(tabs).forEach(key => {
+        if (now - tabs[key] > 10000) {
+          delete tabs[key];
+        }
+      });
+
+      localStorage.setItem('faculty_active_tabs', JSON.stringify(tabs));
+
+      // Update UI
+      activeTabs = Object.keys(tabs).length;
+    }
+
+    // Show notification
+    function showNotification(message, type = 'info') {
+      const container = document.getElementById('notificationContainer');
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      notification.innerHTML = `
+    <i class="fas ${type === 'success' ? 'fa-check-circle' :
+          type === 'error' ? 'fa-exclamation-circle' :
+            type === 'warning' ? 'fa-exclamation-triangle' :
+              'fa-info-circle'}"></i>
+    ${message}
+  `;
+
+      container.appendChild(notification);
+
+      // Remove after 3 seconds
+      setTimeout(() => {
+        notification.style.animation = 'slideOutRight 0.3s ease';
+        setTimeout(() => {
+          notification.remove();
+        }, 300);
+      }, 3000);
+    }
+
+    // Show loading overlay
+    function showLoading() {
+      document.getElementById('loadingOverlay').style.display = 'flex';
+    }
+
+    // Hide loading overlay
+    function hideLoading() {
+      document.getElementById('loadingOverlay').style.display = 'none';
+    }
+
+    // ========== DATABASE FUNCTIONS ==========
+
+    // Fetch faculty info from database
+    async function fetchFacultyInfo() {
+      const username = localStorage.getItem("username");
+
+      if (!username) {
+        console.error("No username found in localStorage");
+        return;
+      }
+
+      try {
+        showLoading();
+        console.log("Fetching faculty info for username:", username);
+
+        const response = await fetch(`/faculty/info?username=${encodeURIComponent(username)}`);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("Faculty info response:", data);
+
+        if (data.success && data.faculty) {
+          // Store faculty data globally
+          facultyData = data.faculty;
+
+          // Store faculty ID in localStorage
+          if (data.faculty._id || data.faculty.id) {
+            localStorage.setItem("facultyId", data.faculty._id || data.faculty.id);
+          }
+
+          // Update the display with faculty data
+          updateFacultyInfoDisplay(data.faculty);
+
+          // Also store in localStorage for backup
+          localStorage.setItem("facultyName", data.faculty.name || "");
+          localStorage.setItem("facultyId", data.faculty.id || data.faculty._id || "");
+          localStorage.setItem("designation", data.faculty.role || data.faculty.designation || "");
+          localStorage.setItem("department", data.faculty.department || "");
+          localStorage.setItem("experience", data.faculty.experience || "0");
+          localStorage.setItem("email", data.faculty.email || "");
+
+          console.log("✅ Faculty data loaded from database and displayed");
+        } else {
+          console.error("Failed to fetch faculty data:", data.message);
+          showNotification("Could not load faculty information", "error");
+
+          // Try to load from localStorage as fallback
+          loadFacultyFromLocalStorage();
+        }
+      } catch (error) {
+        console.error("Error fetching faculty info:", error);
+        showNotification("Error loading faculty data", "error");
+
+        // Try to load from localStorage as fallback
+        loadFacultyFromLocalStorage();
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // Load faculty data from localStorage (fallback)
+    function loadFacultyFromLocalStorage() {
+      console.log("Attempting to load faculty data from localStorage");
+
+      const facultyName = localStorage.getItem("facultyName");
+      const username = localStorage.getItem("username");
+      const designation = localStorage.getItem("designation");
+      const department = localStorage.getItem("department");
+      const experience = localStorage.getItem("experience");
+      const email = localStorage.getItem("email");
+
+      if (facultyName || username) {
+        const facultyData = {
+          name: facultyName || "Faculty Member",
+          username: username || "-",
+          role: designation || "Faculty",
+          designation: designation || "Faculty",
+          department: department || "Not Specified",
+          experience: experience ? parseInt(experience) : 0,
+          email: email || "No email provided"
+        };
+
+        updateFacultyInfoDisplay(facultyData);
+        console.log("✅ Faculty data loaded from localStorage");
+      } else {
+        console.warn("No faculty data found in localStorage");
+      }
+    }
+
+    // Update faculty info display with all details
+    function updateFacultyInfoDisplay(faculty) {
+      if (!faculty) return;
+
+      console.log("Updating faculty display with:", faculty);
+
+      // Get first letter for avatar
+      const firstLetter = faculty.name ? faculty.name.charAt(0).toUpperCase() : 'F';
+      document.getElementById('facultyAvatar').textContent = firstLetter;
+
+      // Update name and role
+      document.getElementById('facultyDisplayName').textContent = faculty.name || 'Faculty Member';
+      document.getElementById('facultyRole').textContent = faculty.role || faculty.designation || 'Faculty';
+
+      // Update stats
+      document.getElementById('facultyUsername').textContent = faculty.username || '-';
+      document.getElementById('facultyDepartment').textContent = faculty.department || '-';
+
+      const experience = faculty.experience || 0;
+      document.getElementById('facultyExperience').textContent = `${experience} year${experience !== 1 ? 's' : ''}`;
+
+      // Update email
+      document.getElementById('facultyEmail').textContent = faculty.email || '-';
+
+      // STORE DESIGNATION IN LOCALSTORAGE FOR ALLOCATION CALCULATIONS
+      if (faculty.role || faculty.designation) {
+        localStorage.setItem("designation", faculty.role || faculty.designation);
+      }
+    }
+
+    // ========== SIMPLIFIED ALLOCATION FUNCTIONS ==========
+
+    // Load allocation details for the faculty from the admin-created allocations
+    async function loadAllocationDetails() {
+      console.log("🚀 Loading allocation details from admin allocations...");
+      showLoading();
+
+      const username = localStorage.getItem("username");
+      const semesterFilter = document.getElementById("semesterFilter");
+      const semester = semesterFilter ? semesterFilter.value : "odd";
+
+      if (!username) {
+        console.error("❌ User information not found");
+        showNoAllocationMessage("Please login again");
+        hideLoading();
+        return;
+      }
+
+      try {
+        // Show loading state
+        document.getElementById("allocationTableBody").innerHTML = `
+            <tr><td colspan="6" class="no-data">
+                <div class="loading-spinner" style="margin: 20px auto;"></div>
+                Loading allocations...
+            </td></tr>
+        `;
+
+        // Clear summary box
+        document.getElementById("allocationSummary").innerHTML = "";
+
+        // Fetch allocations from the database
+        console.log(`📊 Fetching ${semester} semester allocations for: ${username}`);
+        let url = `/faculty/my-allocations?username=${encodeURIComponent(username)}`;
+        if (semester !== 'all') {
+          url += `&semester=${semester}`;
+        }
+
+        const res = await fetch(url);
+
+        if (!res.ok) {
+          throw new Error(`Failed to fetch allocations: ${res.status}`);
+        }
+
+        const data = await res.json();
+        console.log("✅ Allocation data received:", data);
+
+        if (data.success && data.data && data.data.subjects && data.data.subjects.length > 0) {
+          console.log(`✅ Found ${data.data.subjects.length} allocations`);
+          displayAllocationDetails(data.data);
+        } else {
+          console.log("❌ No allocations found");
+          showNoAllocationMessage(`No allocation available for ${semester === 'all' ? 'any' : semester} semester.`);
+        }
+
+      } catch (error) {
+        console.error("❌ Error loading allocation details:", error);
+        showNoAllocationMessage("Error loading allocation details: " + error.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // Display allocation details with summary box
+    function displayAllocationDetails(data) {
+      const tableBody = document.getElementById("allocationTableBody");
+      const summaryDiv = document.getElementById("allocationSummary");
+      const allocations = data.subjects || [];
+
+      if (!tableBody || !summaryDiv) return;
+
+      // Clear summary box and populate with new stats
+      summaryDiv.innerHTML = `
+        <div class="summary-box" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; border-left-color: #059669;">
+          <div>
+            <div style="font-size: 14px; color: #64748b;">Total Allocated Hours</div>
+            <div style="font-size: 24px; font-weight: 700; color: #1e3a8a;">${data.totalHours} <span style="font-size: 14px; font-weight: 500;">hrs/week</span></div>
+          </div>
+          <div>
+            <div style="font-size: 14px; color: #64748b;">Theory Hours</div>
+            <div style="font-size: 24px; font-weight: 700; color: #1e40af;">${data.theoryHours} <span style="font-size: 14px; font-weight: 500;">hrs</span></div>
+          </div>
+          <div>
+            <div style="font-size: 14px; color: #64748b;">Lab / Project Hours</div>
+            <div style="font-size: 24px; font-weight: 700; color: #059669;">${data.labProjectHours} <span style="font-size: 14px; font-weight: 500;">hrs</span></div>
+          </div>
+        </div>
+      `;
+
+      // Clear existing table content
+      tableBody.innerHTML = "";
+
+      // Sort allocations by subject code
+      const sortedAllocations = [...allocations].sort((a, b) => {
+        return (a.subjectCode || "").localeCompare(b.subjectCode || "");
+      });
+
+      // Populate table
+      sortedAllocations.forEach(allocation => {
+        const subjectCode = allocation.subjectCode || 'N/A';
+        const subjectName = allocation.subjectName || subjectCode;
+        const subjectType = (allocation.subjectType || "Theory").toLowerCase();
+        const weeklyHours = allocation.weeklyHours || 0;
+        const semester = allocation.semester || 'N/A';
+
+        // Determine type class
+        let typeClass = "subject-theory";
+        let typeText = "Theory";
+
+        if (subjectType.includes("lab")) {
+          typeClass = "subject-lab";
+          typeText = "Lab";
+        } else if (subjectType.includes("project")) {
+          typeClass = "subject-project";
+          typeText = "Project";
+        }
+
+        // Format date
+        let allocationDate = 'N/A';
+        if (allocation.allocationDate) {
+          try {
+            allocationDate = new Date(allocation.allocationDate).toLocaleDateString('en-IN', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric'
+            });
+          } catch (e) {
+            allocationDate = 'N/A';
+          }
+        }
+
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td><strong>${subjectCode}</strong></td>
+            <td>${subjectName}</td>
+            <td><span class="subject-badge ${typeClass}">${typeText}</span></td>
+            <td><strong>${weeklyHours}</strong> hours</td>
+            <td>${semester}</td>
+            <td>${allocationDate}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      // Add total row
+      const totalRow = document.createElement("tr");
+      totalRow.style.fontWeight = "bold";
+      totalRow.style.background = "#f8f9fa";
+      totalRow.innerHTML = `
+        <td colspan="3" style="text-align: right; border-right: 2px solid #1e40af;">TOTAL:</td>
+        <td><strong>${data.totalHours}</strong> hours</td>
+        <td colspan="2"></td>
+    `;
+      tableBody.appendChild(totalRow);
+      console.log("✅ Allocation display complete");
+    }
+
+    // Show no allocation message
+    function showNoAllocationMessage(message) {
+      const tableBody = document.getElementById("allocationTableBody");
+      const summaryDiv = document.getElementById("allocationSummary");
+
+      if (tableBody) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 50px; color: #6b7280;">
+                    <div style="margin-bottom: 15px;">
+                        <i class="fas fa-inbox" style="font-size: 48px; color: #9ca3af;"></i>
+                    </div>
+                    <strong style="font-size: 16px;">${message}</strong><br>
+                    <small style="color: #9ca3af; margin-top: 10px; display: block;">
+                        Your workload has not been allocated yet or is being processed by the administrator.
+                    </small>
+                    <div style="margin-top: 20px;">
+                        <button onclick="loadAllocationDetails()" class="btn-primary" style="padding: 8px 20px;">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+      }
+
+      if (summaryDiv) summaryDiv.innerHTML = '';
+    }
+
+    // ========== SUBJECT PREFERENCES FUNCTIONS - KEPT EXACTLY THE SAME ==========
+
+    // Load subjects and saved preferences
+    async function loadSubjects() {
+      const theoryTbody = document.getElementById("theoryTable");
+      const labTbody = document.getElementById("labTable");
+
+      theoryTbody.innerHTML = "<tr><td colspan='8' class='no-data'>Loading...</td></tr>";
+      labTbody.innerHTML = "<tr><td colspan='7' class='no-data'>Loading...</td></tr>";
+
+      try {
+        // Fetch subjects
+        const subjectsResponse = await fetch("/api/subjects?forFaculty=true");
+        if (!subjectsResponse.ok) {
+          throw new Error("Failed to fetch subjects");
+        }
+        const subjects = await subjectsResponse.json();
+        allSubjects = subjects;
+
+        // Also populate subject name cache for allocations
+        subjects.forEach(subject => {
+          if (subject.code && subject.name) {
+            subjectNameCache[subject.code] = subject.name;
+          }
+        });
+
+        // Fetch saved preferences
+        const username = localStorage.getItem("username");
+        const prefRes = await fetch(`/faculty/get-preferences?username=${encodeURIComponent(username)}`);
+
+        if (prefRes.ok) {
+          const prefData = await prefRes.json();
+          theoryPreferences = prefData.theoryPreferences || [];
+          labPreferences = prefData.labPreferences || [];
+        } else {
+          // If no preferences found, initialize empty arrays
+          theoryPreferences = [];
+          labPreferences = [];
+        }
+
+        // Filter subjects by type
+        const theorySubjects = subjects.filter(s => s.type === "Theory");
+        const labSubjects = subjects.filter(s => s.type === "Lab" || s.type === "Project");
+
+        const maxTheoryPriority = theorySubjects.length;
+        const maxLabPriority = labSubjects.length;
+
+        // Populate theory table
+        theoryTbody.innerHTML = "";
+        if (theorySubjects.length === 0) {
+          theoryTbody.innerHTML = "<tr><td colspan='8' class='no-data'>No theory subjects available</td></tr>";
+        } else {
+          theorySubjects.forEach(sub => {
+            const savedPref = theoryPreferences.find(p => p.subjectId === sub._id);
+            let options = '<option value="">Select Rank</option>';
+
+            // Generate options from 1 to maxTheoryPriority
+            for (let i = 1; i <= maxTheoryPriority; i++) {
+              const selected = savedPref?.priority === i ? "selected" : "";
+              options += `<option value="${i}" ${selected}>Rank ${i}</option>`;
+            }
+
+            theoryTbody.innerHTML += `
+          <tr>
+            <td>${sub.name || 'N/A'}</td>
+            <td>${sub.code || 'N/A'}</td>
+            <td>${sub.abbreviation || 'N/A'}</td>
+            <td>${sub.semester || 'N/A'}</td>
+            <td>${sub.credit}</td>
+            <td>${sub.weeklyHours || 'N/A'}</td>
+            <td><span class="subject-badge subject-theory">${sub.type || 'N/A'}</span></td>
+            <td>
+              <select onchange="onPreferenceChange('Theory','${sub._id}', this.value)" 
+                      ${checkDeadlineLocked() ? 'disabled' : ''}
+                      style="width: 130px; padding: 8px; border-radius: 6px; border: 1px solid #d1d5db; background: white; cursor: pointer;">
+                ${options}
+              </select>
+            </td>
+          </tr>
+        `;
+          });
+        }
+
+        // Populate lab table
+        labTbody.innerHTML = "";
+        if (labSubjects.length === 0) {
+          labTbody.innerHTML = "<tr><td colspan='7' class='no-data'>No lab subjects available</td></tr>";
+        } else {
+          labSubjects.forEach(sub => {
+            const savedPref = labPreferences.find(p => p.subjectId === sub._id);
+            let options = '<option value="">Select Rank</option>';
+
+            // Generate options from 1 to maxLabPriority
+            for (let i = 1; i <= maxLabPriority; i++) {
+              const selected = savedPref?.priority === i ? "selected" : "";
+              options += `<option value="${i}" ${selected}>Rank ${i}</option>`;
+            }
+
+            labTbody.innerHTML += `
+          <tr>
+            <td>${sub.name || 'N/A'}</td>
+            <td>${sub.code || 'N/A'}</td>
+            <td>${sub.abbreviation || 'N/A'}</td>
+            <td>${sub.semester || 'N/A'}</td>
+            <td>${sub.credit || 'N/A'}</td>
+            <td>${sub.weeklyHours || 'N/A'}</td>
+            <td>
+              <select onchange="onPreferenceChange('Lab','${sub._id}', this.value)"
+                      ${checkDeadlineLocked() ? 'disabled' : ''}
+                      style="width: 130px; padding: 8px; border-radius: 6px; border: 1px solid #d1d5db; background: white; cursor: pointer;">
+                ${options}
+              </select>
+            </td>
+          </tr>
+        `;
+          });
+        }
+
+        await checkDeadline();
+
+      } catch (error) {
+        console.error("Error loading subjects:", error);
+        theoryTbody.innerHTML = "<tr><td colspan='8' class='no-data'>Error loading subjects</td></tr>";
+        labTbody.innerHTML = "<tr><td colspan='7' class='no-data'>Error loading subjects</td></tr>";
+      }
+    }
+
+
+    // Check deadline
+    async function checkDeadline() {
+      try {
+        const deadlineRes = await fetch("/api/preference-deadline");
+        if (deadlineRes.ok) {
+          const deadlineData = await deadlineRes.json();
+
+          if (deadlineData.deadline && Date.now() > Number(deadlineData.deadline)) {
+            applyLockStatus(true);
+            showDeadlineWarning(true);
+
+            const username = localStorage.getItem("username");
+            const prefRes = await fetch(`/faculty/get-preferences?username=${encodeURIComponent(username)}`);
+            const prefData = await prefRes.json();
+
+            if (!prefData.final) {
+              const warningDiv = document.getElementById("deadlineWarning");
+              warningDiv.innerHTML += `
+            <div class="warning-message locked" style="margin-top: 10px;">
+              <i class="fas fa-lock"></i>
+              <strong>DEADLINE EXPIRED:</strong> You did not submit your preferences. 
+              Please contact the admin immediately for further instructions.
+            </div>
+          `;
+            }
+          } else if (deadlineData.deadline) {
+            const timeLeft = Number(deadlineData.deadline) - Date.now();
+            startDeadlineTimer(timeLeft);
+          }
+        }
+      } catch (e) {
+        console.warn("Could not fetch deadline:", e);
+      }
+    }
+
+    // Start deadline timer
+    function startDeadlineTimer(timeLeft) {
+      const timerDiv = document.getElementById('deadlineTimer');
+      const timeRemainingSpan = document.getElementById('timeRemaining');
+
+      if (timeLeft > 0) {
+        timerDiv.style.display = 'flex';
+
+        if (deadlineInterval) clearInterval(deadlineInterval);
+
+        deadlineInterval = setInterval(() => {
+          timeLeft -= 1000;
+
+          if (timeLeft <= 0) {
+            clearInterval(deadlineInterval);
+            timerDiv.style.display = 'none';
+            applyLockStatus(true);
+            showDeadlineWarning(true);
+            return;
+          }
+
+          const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+          const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+          const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+
+          timeRemainingSpan.textContent = `${hours}h ${minutes}m ${seconds}s`;
+        }, 1000);
+      }
+    }
+
+    // Show deadline warning
+    function showDeadlineWarning(locked, hoursLeft = 0) {
+      const warningDiv = document.getElementById("deadlineWarning");
+
+      if (locked) {
+        warningDiv.innerHTML = `
+      <div class="warning-message locked">
+        <i class="fas fa-lock"></i>
+        🔒 Preference submission deadline has expired. You can no longer modify your preferences.
+      </div>
+    `;
+      } else if (hoursLeft > 0) {
+        warningDiv.innerHTML = `
+      <div class="warning-message">
+        <i class="fas fa-hourglass-half"></i>
+        ⏰ Deadline: ${hoursLeft} hour${hoursLeft !== 1 ? 's' : ''} remaining to submit preferences
+      </div>
+    `;
+      } else {
+        warningDiv.innerHTML = '';
+      }
+    }
+
+    // Check if deadline is locked
+    function checkDeadlineLocked() {
+      return false;
+    }
+
+    // Update preferences when user changes selection
+    function onPreferenceChange(type, subjectId, priority) {
+      updateSessionActivity();
+
+      if (!priority) {
+        const list = type === "Theory" ? theoryPreferences : labPreferences;
+        const index = list.findIndex(p => p.subjectId === subjectId);
+        if (index > -1) {
+          list.splice(index, 1);
+          showNotification(`Rank removed for subject`, 'info');
+        }
+        return;
+      }
+
+      priority = parseInt(priority);
+      if (!priority || !allSubjects) return;
+
+      const subject = allSubjects.find(s => s._id === subjectId);
+      if (!subject) return;
+
+      // Get max priority based on subject type
+      const theorySubjects = allSubjects.filter(s => s.type === "Theory");
+      const labSubjects = allSubjects.filter(s => s.type === "Lab" || s.type === "Project");
+
+      const maxPriority = type === "Theory" ? theorySubjects.length : labSubjects.length;
+
+      if (priority > maxPriority) {
+        showNotification(`Priority cannot exceed ${maxPriority}`, 'warning');
+        const select = document.querySelector(`select[onchange*="${subjectId}"]`);
+        if (select) select.value = "";
+        return;
+      }
+
+      const prefObj = {
+        subjectId,
+        subjectName: subject.name,
+        code: subject.code,
+        abbreviation: subject.abbreviation,
+        semester: subject.semester,
+        credit: subject.credit,
+        weeklyHours: subject.weeklyHours,
+        priority
+      };
+
+      const list = type === "Theory" ? theoryPreferences : labPreferences;
+
+      const duplicate = list.find(p => p.priority === priority && p.subjectId !== subjectId);
+      if (duplicate) {
+        showNotification(`⚠️ Priority ${priority} is already assigned to ${duplicate.subjectName}`, 'warning');
+        const select = document.querySelector(`select[onchange*="${subjectId}"]`);
+        if (select) select.value = "";
+        return;
+      }
+
+      const index = list.findIndex(p => p.subjectId === subjectId);
+      if (index > -1) {
+        list[index] = prefObj;
+        showNotification(`Rank updated to ${priority} for ${subject.name}`, 'info');
+      } else {
+        list.push(prefObj);
+        showNotification(`Rank ${priority} selected for ${subject.name}`, 'success');
+      }
+
+      list.sort((a, b) => a.priority - b.priority);
+    }
+
+
+    // Save preferences
+    async function savePreferences(final = false) {
+      updateSessionActivity();
+
+      const username = localStorage.getItem("username");
+      if (!username) {
+        showNotification("Please login again", "warning");
+        return;
+      }
+
+      if (theoryPreferences.length === 0 && labPreferences.length === 0) {
+        showNotification("Please select priorities for at least one subject", "warning");
+        return;
+      }
+
+      showLoading();
+
+      try {
+        const res = await fetch("/faculty/submit-preferences", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            theoryPreferences,
+            labPreferences,
+            final
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          if (final) {
+            showNotification("✅ Preferences submitted successfully!", "success");
+            applyLockStatus(true);
+            localStorage.setItem('faculty_preferences_update', Date.now().toString());
+          } else {
+            showNotification("📝 Preferences saved as draft", "info");
+          }
+        } else {
+          showNotification("❌ Failed to save preferences", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showNotification("❌ Error submitting preferences", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // Submit preferences
+    async function submitPreferences() {
+      updateSessionActivity();
+
+      if (!allSubjects || allSubjects.length === 0) {
+        showNotification("Subjects are still loading. Please wait...", "warning");
+        return;
+      }
+
+      const theorySubjects = allSubjects.filter(s => s.type === "Theory");
+      const labSubjects = allSubjects.filter(s => s.type === "Lab" || s.type === "Project");
+
+      const allTheoryPrioritized = theorySubjects.every(sub =>
+        theoryPreferences.some(p => p.subjectId === sub._id)
+      );
+
+      const allLabPrioritized = labSubjects.every(sub =>
+        labPreferences.some(p => p.subjectId === sub._id)
+      );
+
+      if (!allTheoryPrioritized || !allLabPrioritized) {
+        showNotification("You must select a priority for ALL subjects before final submission!", "warning");
+        return;
+      }
+
+      const theoryRanks = theoryPreferences.map(p => p.priority);
+      const labRanks = labPreferences.map(p => p.priority);
+
+      const hasDuplicates = (arr) => new Set(arr).size !== arr.length;
+
+      if (hasDuplicates(theoryRanks)) {
+        showNotification("Please ensure all Theory subjects have unique ranks", "warning");
+        return;
+      }
+
+      if (hasDuplicates(labRanks)) {
+        showNotification("Please ensure all Lab subjects have unique ranks", "warning");
+        return;
+      }
+
+      if (confirm("Are you sure you want to submit your final preferences? This action cannot be undone.")) {
+        await savePreferences(true);
+      }
+    }
+
+    // Reset preferences
+    function resetPreferences() {
+      updateSessionActivity();
+
+      if (!confirm("This will clear all your selected preferences. Continue?")) {
+        return;
+      }
+
+      theoryPreferences = [];
+      labPreferences = [];
+
+      document.querySelectorAll("#theoryTable select, #labTable select")
+        .forEach(select => select.value = "");
+
+      showNotification("All preferences have been reset", "info");
+    }
+
+    // Apply lock status
+    function applyLockStatus(locked) {
+      document.querySelectorAll("#theoryTable select, #labTable select")
+        .forEach(s => s.disabled = locked);
+      document.getElementById("submitBtn").disabled = locked;
+      document.getElementById("saveBtn").disabled = locked;
+    }
+
+    // Load timetable
+    async function loadTimetable() {
+      const username = localStorage.getItem("username");
+      if (!username) return;
+
+      const tb = document.getElementById("timetableBody");
+      tb.innerHTML = '<tr><td colspan="6" class="no-data"><div class="loading-spinner" style="margin: 10px auto;"></div>Loading your timetable...</td></tr>';
+
+      try {
+        const res = await fetch(`/faculty/my-timetable?username=${encodeURIComponent(username)}`);
+        const data = await res.json();
+        const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+        if (data.success) {
+          console.log("[TT] Data received:", data.timetable);
+          
+          // 1. Identify all unique time slots in the data
+          const uniqueSlots = new Set();
+          days.forEach(day => {
+            const dayData = data.timetable[day] || {};
+            Object.keys(dayData).forEach(slotTime => uniqueSlots.add(slotTime));
+          });
+
+          // 2. Sort slots chronologically (simple string sort usually works if padded, but let's be safe)
+          // For now, if no slots, use defaults. If slots exist, use them.
+          let periods = Array.from(uniqueSlots).sort((a, b) => {
+             // Basic time extraction for sorting: "09:30 AM - ..." -> "09:30 AM"
+             const timeA = a.split(' ')[0] + ' ' + a.split(' ')[1];
+             const timeB = b.split(' ')[0] + ' ' + b.split(' ')[1];
+             return new Date('1970/01/01 ' + timeA) - new Date('1970/01/01 ' + timeB);
+          });
+
+          // Fallback to default periods if no data, to keep UI consistent
+          if (periods.length === 0) {
+            // Try to fetch from shared API if no local timetable data
+            const slotRes = await fetch("/admin/timeslots");
+            const slotData = await slotRes.json();
+            if (slotData.success && slotData.timeSlots) {
+              periods = slotData.timeSlots;
+            } else {
+              periods = ["Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5"];
+            }
+          }
+
+          // 3. Update Table Headers
+          const headerRow = document.getElementById("ttHeaderRow");
+          if (headerRow) {
+            headerRow.innerHTML = `<th>Day</th>` + periods.map((p, i) => {
+              const timeDisplay = p.includes('(') ? p : `Period ${i+1}<br><small>${p}</small>`;
+              return `<th>${timeDisplay}</th>`;
+            }).join('');
+          }
+          
+          // 4. Update Table Body
+          tb.innerHTML = "";
+          let totalEntries = 0;
+          
+          days.forEach(day => {
+            let rowHtml = `<tr><td style="background: #f1f5f9; font-weight: 600;">${day}</td>`;
+            const dayData = data.timetable[day] || {};
+            
+            periods.forEach(p => {
+              // Exact match or contains match
+              let entries = dayData[p] || [];
+              
+              // If no exact match, try fuzzy (for cases where periods were merged or renamed)
+              if (entries.length === 0) {
+                Object.keys(dayData).forEach(slotKey => {
+                  if (slotKey.includes(p) || p.includes(slotKey)) {
+                    entries = dayData[slotKey];
+                  }
+                });
+              }
+
+              if (entries.length > 0) {
+                totalEntries += entries.length;
+                const content = entries.map(e => `
+                  <div style="background: #e0e7ff; padding: 8px; border-radius: 6px; border-left: 3px solid #1e40af; margin-bottom: 5px; text-align: left;">
+                    <div style="font-weight: 600; color: #1e3a8a; font-size: 13px;">${e.subjectName}</div>
+                    <div style="font-size: 11px; color: #475569; margin-top: 2px;">
+                      <div style="margin-bottom: 2px;"><i class="fas fa-graduation-cap"></i> <strong>${e.semester}</strong></div>
+                      <div>
+                        <i class="fas fa-users"></i> ${e.department}
+                        <span style="margin: 0 5px;">|</span>
+                        <i class="fas fa-door-open"></i> ${e.room}
+                      </div>
+                    </div>
+                  </div>
+                `).join('');
+                rowHtml += `<td style="padding: 8px; vertical-align: top;">${content}</td>`;
+              } else {
+                rowHtml += `<td style="color: #94a3b8; font-size: 12px; font-style: italic;">Free Period</td>`;
+              }
+            });
+            
+            rowHtml += `</tr>`;
+            tb.innerHTML += rowHtml;
+          });
+          
+          if (totalEntries === 0) {
+            tb.innerHTML = `<tr><td colspan="${periods.length + 1}" class="no-data">No timetable entries found for you yet.</td></tr>`;
+          }
+        } else {
+          showNotification(data.message || "Failed to load timetable", "error");
+        }
+      } catch (error) {
+        console.error("Timetable load error:", error);
+        tb.innerHTML = '<tr><td colspan="6" class="no-data">Unable to connect to server.</td></tr>';
+      }
+    }
+
+    // Save time preferences
+    async function saveTimePreferences() {
+      updateSessionActivity();
+
+      const username = localStorage.getItem("username");
+      if (!username) {
+        showNotification("User not logged in", "warning");
+        return;
+      }
+
+      const preferences = [];
+      let hasError = false;
+
+      for (let i = 1; i <= 3; i++) {
+        const day = document.getElementById(`day${i}`).value;
+        const time = document.getElementById(`time${i}`).value;
+        const reason = document.getElementById(`reason${i}`).value.trim();
+
+        if ((day || time) && !reason) {
+          hasError = true;
+          document.getElementById(`reason${i}`).style.border = "2px solid #dc2626";
+          document.getElementById(`reason${i}`).style.backgroundColor = "#fef2f2";
+        } else if (day && time) {
+          preferences.push({ day, time, reason });
+          document.getElementById(`reason${i}`).style.border = "1px solid #d1d5db";
+          document.getElementById(`reason${i}`).style.backgroundColor = "white";
+        } else if (day || time) {
+          hasError = true;
+          if (!day) document.getElementById(`day${i}`).style.border = "2px solid #dc2626";
+          if (!time) document.getElementById(`time${i}`).style.border = "2px solid #dc2626";
+        } else {
+          document.getElementById(`reason${i}`).style.border = "1px solid #d1d5db";
+          document.getElementById(`reason${i}`).style.backgroundColor = "white";
+          document.getElementById(`day${i}`).style.border = "1px solid #d1d5db";
+          document.getElementById(`time${i}`).style.border = "1px solid #d1d5db";
+        }
+      }
+
+      if (preferences.length === 0 && !hasError) {
+        showNotification("⚠️ Please select at least one time preference", "warning");
+        return;
+      }
+
+      if (hasError) {
+        showNotification("❌ Please fix the validation errors", "error");
+        return;
+      }
+
+      const backToBack = document.querySelector('input[name="backToBack"]:checked')?.value === "yes";
+
+      if (document.querySelector('input[name="backToBack"]:checked') === null) {
+        showNotification("❌ Please select whether you can take back-to-back classes", "warning");
+        return;
+      }
+
+      showLoading();
+
+      try {
+        const res = await fetch("/faculty/submit-time-preferences", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            preferences,
+            canTakeBackToBack: backToBack
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification("✅ Time preferences saved successfully", "success");
+
+          for (let i = 1; i <= 3; i++) {
+            document.getElementById(`day${i}`).style.border = "1px solid #d1d5db";
+            document.getElementById(`time${i}`).style.border = "1px solid #d1d5db";
+            document.getElementById(`reason${i}`).style.border = "1px solid #d1d5db";
+            document.getElementById(`reason${i}`).style.backgroundColor = "white";
+          }
+
+          localStorage.setItem('faculty_time_preferences_update', Date.now().toString());
+        } else {
+          showNotification("❌ Failed to save time preferences: " + (data.message || "Unknown error"), "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showNotification("❌ Server error. Please try again.", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // Check for new messages
+    async function checkNewMessages() {
+      const username = localStorage.getItem("username");
+      if (!username) return;
+
+      try {
+        const res = await fetch(`/faculty/messages?username=${encodeURIComponent(username)}`);
+        const data = await res.json();
+
+        if (data.success && data.messages && data.messages.length > 0) {
+          const unreadCount = data.messages.filter(msg => !msg.read).length;
+          const messageBadge = document.getElementById('messageBadge');
+
+          if (unreadCount > 0) {
+            messageBadge.style.display = 'inline-flex';
+            messageBadge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+            messageBadge.title = `${unreadCount} unread message${unreadCount > 1 ? 's' : ''}`;
+
+            if (!document.getElementById("messages").classList.contains("active")) {
+              showDesktopNotification("New Messages",
+                `You have ${unreadCount} unread message${unreadCount > 1 ? 's' : ''}`);
+            }
+          } else {
+            messageBadge.style.display = 'none';
+          }
+
+          if (document.getElementById("messages").classList.contains("active")) {
+            displayMessages(data.messages);
+          }
+        }
+      } catch (err) {
+        console.error("Error checking messages:", err);
+      }
+    }
+
+    // Display messages
+    function displayMessages(messages) {
+      const container = document.getElementById('messagesContainer');
+
+      if (!messages || messages.length === 0) {
+        container.innerHTML = `
+      <div class="no-data">
+        <i class="fas fa-inbox" style="font-size: 40px; color: #9ca3af; margin-bottom: 10px;"></i><br>
+        No messages to display
+      </div>
+    `;
+        return;
+      }
+
+      messages.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      let html = '';
+      messages.forEach(msg => {
+        const date = new Date(msg.timestamp).toLocaleString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+        html += `
+      <div class="message-item ${msg.read ? '' : 'unread'}" onclick="markMessageRead('${msg.id}')">
+        <div class="message-date">
+          <span><i class="far fa-clock"></i> ${date}</span>
+          ${!msg.read ? '<span class="unread-badge" style="background:#fbbf24; color:#92400e; padding:2px 8px; border-radius:12px;">New</span>' : ''}
+        </div>
+        <div class="message-text">${msg.text}</div>
+      </div>
+    `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // Mark message as read
+    async function markMessageRead(messageId) {
+      const username = localStorage.getItem("username");
+
+      try {
+        await fetch("/faculty/mark-message-read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, messageId })
+        });
+
+        checkNewMessages();
+      } catch (err) {
+        console.error("Error marking message as read:", err);
+      }
+    }
+
+    // Desktop notifications
+    function showDesktopNotification(title, body) {
+      if (!("Notification" in window)) return;
+
+      if (Notification.permission === "granted") {
+        new Notification(title, { body });
+      } else if (Notification.permission !== "denied") {
+        Notification.requestPermission().then(permission => {
+          if (permission === "granted") {
+            new Notification(title, { body });
+          }
+        });
+      }
+    }
+
+    // Section switching
+    function showSection(id, el) {
+      updateSessionActivity();
+
+      document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+
+      document.querySelectorAll(".sidebar a").forEach(a => a.classList.remove("active"));
+      el.classList.add("active");
+
+      if (id === 'messages') {
+        loadMessages();
+        // Mark all unread Message-collection messages as read when opening Messages
+        markAllMessagesRead();
+        loadUnreadCount();
+        loadSubstitutionRequests();
+        if (messageRefreshInterval) clearInterval(messageRefreshInterval);
+        messageRefreshInterval = setInterval(checkNewMessages, 30000);
+      } else if (id === 'preferences') {
+        loadSubjects();
+      } else if (id === 'allocation') {
+        console.log("🎯 Allocation section clicked - loading details...");
+        loadAllocationDetails();
+      } else if (id === 'timetable') {
+        loadTimetable();
+      } else if (id === 'markAbsence') {
+        loadAbsenceSlots();
+        loadMyAbsences();
+      } else {
+        if (messageRefreshInterval) {
+          clearInterval(messageRefreshInterval);
+          messageRefreshInterval = null;
+        }
+      }
+    }
+
+
+    // Load messages
+    async function loadMessages() {
+      const username = localStorage.getItem("username");
+
+      try {
+        const res = await fetch(`/faculty/messages?username=${encodeURIComponent(username)}`);
+        const data = await res.json();
+
+        if (data.success) {
+          displayMessages(data.messages);
+        }
+      } catch (err) {
+        console.error("Error loading messages:", err);
+      }
+    }
+
+    // ================== UNREAD MESSAGE BADGE ==================
+    async function loadUnreadCount() {
+      const facultyId = localStorage.getItem("facultyId");
+      if (!facultyId) return;
+
+      try {
+        const res = await fetch(`/api/messages/unread-count/${encodeURIComponent(facultyId)}`);
+        const data = await res.json();
+        console.log("Unread count API:", data);
+
+        const badge = document.getElementById("messageBadge");
+        if (!badge) return;
+
+        const count = Number(data?.unreadCount || 0);
+        if (count > 0) {
+          badge.innerText = count > 99 ? "99+" : String(count);
+          badge.style.display = "inline-block";
+        } else {
+          badge.style.display = "none";
+        }
+      } catch (err) {
+        console.error("Unread count fetch error:", err);
+      }
+    }
+
+    async function markAllMessagesRead() {
+      const facultyId = localStorage.getItem("facultyId");
+      if (!facultyId) return;
+
+      try {
+        await fetch(`/api/messages/mark-read/${encodeURIComponent(facultyId)}`, { method: "PUT" });
+      } catch (err) {
+        console.error("Mark all read error:", err);
+      }
+    }
+
+    // ================== SUBSTITUTION REQUESTS (MESSAGES EXTENSION) ==================
+    async function loadSubstitutionRequests() {
+      const tbody = document.getElementById("subRequestsTableBody");
+      if (!tbody) return;
+
+      const facultyId = localStorage.getItem("facultyId");
+      if (!facultyId) {
+        tbody.innerHTML = `<tr><td colspan="6" class="no-data">No faculty session found.</td></tr>`;
+        return;
+      }
+
+      try {
+        const res = await fetch(`/faculty-requests?facultyId=${encodeURIComponent(facultyId)}`);
+        const data = await res.json();
+
+        if (!data.success || !Array.isArray(data.requests)) {
+          tbody.innerHTML = `<tr><td colspan="6" class="no-data">No requests.</td></tr>`;
+          return;
+        }
+
+        if (data.requests.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" class="no-data">No substitution requests.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = data.requests.map(r => {
+          const dateLabel = r.date ? new Date(r.date).toLocaleDateString() : "-";
+          const slot = r.timeSlot || "-";
+          const sem = (r.semester != null && r.semester !== "") ? `Semester ${r.semester}` : "-";
+          const absentName = r.absentFacultyName || (r.fromFacultyId?.name || "Faculty");
+          const deadline = r.deadline || r.deadlineAt;
+          const deadlineLabel = deadline ? new Date(deadline).toLocaleString() : "-";
+          const msg = `A class is available due to absence of ${absentName}. If you are interested, confirm. Otherwise cancel.`;
+          const status = r.status || "pending";
+          const acceptedByName = r.acceptedFacultyName || "";
+
+          const now = Date.now();
+          const isExpiredByTime = deadline ? (now > new Date(deadline).getTime()) : false;
+          const canRespond = status === "pending" && !isExpiredByTime;
+          const statusBadge = status === "pending"
+            ? `<span style="background:#fbbf24; color:#92400e; padding:2px 10px; border-radius:999px;">Pending</span>`
+            : status === "accepted"
+              ? `<span style="background:#bbf7d0; color:#166534; padding:2px 10px; border-radius:999px;">Accepted</span>`
+              : status === "rejected"
+                ? `<span style="background:#fecaca; color:#991b1b; padding:2px 10px; border-radius:999px;">Rejected</span>`
+                : `<span style="background:#e5e7eb; color:#374151; padding:2px 10px; border-radius:999px;">${status}</span>`;
+
+          return `
+            <tr>
+              <td>${dateLabel}</td>
+              <td>${slot}</td>
+              <td>${sem}</td>
+              <td style="text-align:left;">
+                ${msg}<br>
+                <small><strong>Deadline:</strong> ${deadlineLabel}</small>
+                ${status === "accepted" && acceptedByName ? `<br><small><strong>Accepted by:</strong> ${acceptedByName}</small>` : ""}
+                ${(status === "pending" && isExpiredByTime) ? `<br><small style="color:#991b1b;"><strong>Deadline expired</strong></small>` : ""}
+              </td>
+              <td>${statusBadge}</td>
+              <td>
+                ${canRespond ? `
+                  <button class="btn-submit" style="padding:8px 12px;" onclick="respondRequest('${r._id}', 'confirm')">Confirm</button>
+                  <button class="btn-submit" style="padding:8px 12px; background:#ef4444;" onclick="respondRequest('${r._id}', 'cancel')">Cancel</button>
+                ` : (status === "accepted" && acceptedByName ? `Accepted by ${acceptedByName}` : (isExpiredByTime ? "Deadline expired" : "-"))}
+              </td>
+            </tr>
+          `;
+        }).join("");
+      } catch (err) {
+        console.error("Error loading substitution requests:", err);
+        tbody.innerHTML = `<tr><td colspan="6" class="no-data">Error loading requests.</td></tr>`;
+      }
+    }
+
+    async function respondRequest(id, action) {
+      try {
+        const facultyId = localStorage.getItem("facultyId");
+        const res = await fetch("/api/substitution/respond", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ facultyId, messageId: id, action })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          return showNotification(data.message || "Failed to save response", "error");
+        }
+        showNotification("Response recorded", "success");
+        loadSubstitutionRequests();
+      } catch (err) {
+        console.error("Respond request error:", err);
+        showNotification("Error saving response", "error");
+      }
+    }
+
+    // ================== SUBSTITUTION MANAGEMENT ==================
+    async function submitAbsence() {
+      const date = document.getElementById("absenceDate").value;
+      const semester = document.getElementById("absenceSemester").value;
+      const facultyId = localStorage.getItem("facultyId");
+      const facultyName = localStorage.getItem("facultyName") || "Faculty Member";
+      
+      const selectedSlots = Array.from(document.querySelectorAll('input[name="absenceSlots"]:checked')).map(cb => cb.value);
+
+      if (!date || !semester || selectedSlots.length === 0 || !facultyId) {
+        return showNotification("Please select date, semester, and at least one time slot.", "warning");
+      }
+
+      showLoading();
+      try {
+        const res = await fetch("/api/faculty/mark-absence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            facultyId, 
+            facultyName,
+            date, 
+            semester: parseInt(semester), 
+            timeSlots: selectedSlots
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showNotification(data.message || "Absence marked successfully.", "success");
+          
+          // Clear form
+          document.getElementById("absenceDate").value = "";
+          document.getElementById("absenceSemester").value = "";
+          document.querySelectorAll('input[name="absenceSlots"]').forEach(cb => cb.checked = false);
+          
+          loadMyAbsences();
+        } else {
+          showNotification(data.message, "error");
+        }
+      } catch (err) {
+        console.error("Submit absence error:", err);
+        showNotification("Error submitting absence request", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+
+
+    async function loadAbsenceSlots() {
+      const container = document.getElementById("slotsContainer");
+      if (!container) return;
+      
+      try {
+        const res = await fetch("/admin/timeslots");
+        const data = await res.json();
+        
+        if (data.success && data.timeSlots && data.timeSlots.length > 0) {
+          container.innerHTML = data.timeSlots.map((slot, i) => `
+            <label style="background: white; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; display: flex; align-items: center; gap: 10px; cursor: pointer;">
+              <input type="checkbox" name="absenceSlots" value="${slot}"> 
+              Period ${i+1} (${slot})
+            </label>
+          `).join("");
+        } else {
+          container.innerHTML = '<div style="color: #ef4444; font-size: 13px;">No timetable periods found.</div>';
+        }
+      } catch (err) {
+        console.error("Error loading absence slots:", err);
+        container.innerHTML = '<div style="color: #ef4444; font-size: 13px;">Error loading slots.</div>';
+      }
+    }
+
+
+    async function loadMyAbsences() {
+      try {
+        const username = localStorage.getItem("username");
+        if (!username) return;
+
+        const res = await fetch("/faculty/absences", {
+          headers: {
+            "x-username": username,
+            "x-role": "faculty"
+          }
+        });
+        const data = await res.json();
+
+        const tbody = document.getElementById("myAbsencesTable");
+        if (!tbody) return;
+
+        if (!data.success || !Array.isArray(data.absences)) {
+          tbody.innerHTML = `<tr><td colspan="4" class="no-data">Error loading absences</td></tr>`;
+          return;
+        }
+
+        const myAbsences = data.absences;
+        if (myAbsences.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="4" class="no-data">No absences reported</td></tr>`;
+        } else {
+          tbody.innerHTML = myAbsences.map(a => `
+            <tr>
+              <td>${new Date(a.date).toLocaleDateString()}</td>
+              <td><small>${a.timeSlot || (Array.isArray(a.timeSlots) ? a.timeSlots.join(', ') : '-')}</small></td>
+              <td><span class="subject-badge subject-theory">Marked</span></td>
+              <td>
+                <button class="btn-submit" onclick="deleteAbsence('${a._id}')">
+                  <i class="fas fa-trash"></i> Delete
+                </button>
+              </td>
+            </tr>
+          `).join("");
+        }
+      } catch (err) { 
+        console.error("Load absences error:", err); 
+      }
+    }
+
+    async function deleteAbsence(id) {
+      if (!confirm("Are you sure you want to delete this absence?")) return;
+
+      try {
+        const username = localStorage.getItem("username") || "";
+        const res = await fetch(`/faculty/delete-absence/${id}`, {
+          method: "DELETE",
+          headers: {
+            "x-username": username,
+            "x-role": "faculty"
+          }
+        });
+
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || "Absence deleted successfully");
+
+        // Reload absence list
+        loadMyAbsences();
+      } catch (err) {
+        console.error(err);
+        alert("Error deleting absence");
+      }
+    }
+
+
+    // Logout
+    function logoutFaculty() {
+      if (confirm("Are you sure you want to logout?")) {
+        showLoading();
+
+        const tabId = sessionStorage.getItem('faculty_tab_id');
+        if (tabId) {
+          const tabs = JSON.parse(localStorage.getItem('faculty_active_tabs') || '{}');
+          delete tabs[tabId];
+          localStorage.setItem('faculty_active_tabs', JSON.stringify(tabs));
+        }
+
+        if (messageRefreshInterval) clearInterval(messageRefreshInterval);
+        if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+        if (deadlineInterval) clearInterval(deadlineInterval);
+
+        SessionManager.forceLogout("Logged out successfully");
+      }
+    }
+
+    // Initialize on page load
+    window.onload = async function () {
+      console.log("🚀 Initializing faculty dashboard...");
+
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+
+      await fetchFacultyInfo();
+      await loadSubjects();
+      loadTimetable();
+      loadUnreadCount();
+      setInterval(checkNewMessages, 60000);
+      setInterval(loadUnreadCount, 10000);
+      setInterval(checkDeadline, 300000);
+
+      window.addEventListener('storage', function (e) {
+        if (e.key === 'faculty_preferences_update') {
+          if (document.getElementById("preferences").classList.contains("active")) {
+            loadSubjects();
+          }
+        } else if (e.key === 'faculty_time_preferences_update') {
+          showNotification("Time preferences updated in another tab", "info");
+        } else if (e.key === SessionManager.SESSION_KEY) {
+          if (!e.newValue) {
+            showNotification("Logged out from another tab", "warning");
+            setTimeout(() => {
+              window.location.href = "index.html";
+            }, 2000);
+          }
+        }
+      });
+
+      console.log("✅ Faculty dashboard initialized");
+    };
+  </script>
+
+</body>
+
+</html>

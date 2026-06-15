@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Smart Timetable Generator</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Session Manager with fallback -->
+<script>
+// Fallback SessionManager if file fails to load
+window.SessionManager = window.SessionManager || {
+  SESSION_KEY: 'app_session',
+  
+  getSession() {
+    const sessionData = localStorage.getItem(this.SESSION_KEY);
+    if (!sessionData) return null;
+    try { return JSON.parse(sessionData); } catch { return null; }
+  },
+  
+  setSession(role, userData = {}) {
+    const session = {
+      loggedIn: true,
+      role: role,
+      username: userData.username || userData.email,
+      timestamp: Date.now(),
+      lastActivity: Date.now(),
+      userData: userData
+    };
+    localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+    return session;
+  },
+  
+  clearSession() { localStorage.removeItem(this.SESSION_KEY); },
+  
+  getDashboardPath(role) {
+    const paths = { admin: 'admin.html', faculty: 'faculty.html', student: 'student.html' };
+    return paths[role] || 'index.html';
+  },
+  
+  redirectToDashboard(role) { window.location.href = this.getDashboardPath(role); },
+  
+  forceLogout(message) {
+    if (message) sessionStorage.setItem('logout_message', message);
+    this.clearSession();
+    window.location.href = 'index.html';
+  }
+};
+</script>
+
+<!-- Try to load actual Session Manager -->
+<script src="/session-manager.js" onerror="console.log('Using fallback SessionManager')"></script>
+
+<style>
+*{
+  box-sizing:border-box;
+  font-family:'Inter',sans-serif;
+}
+
+body{
+  margin:0;
+  background:#f8fafc;
+}
+
+/* ===== HERO SECTION ===== */
+.hero{
+  min-height:100vh;
+  background:#1e3a8a;
+  color:white;
+  padding:80px 140px 120px 140px;
+  text-align:center;
+}
+
+.hero-content{
+  max-width:900px;
+  margin:0 auto;
+}
+
+.hero h1{
+  font-size:38px;
+  font-weight:600;
+  margin-bottom:18px;
+}
+
+.hero p{
+  font-size:17px;
+  line-height:1.9;
+  color:#e0e7ff;
+  max-width:700px;
+  margin:0 auto;
+}
+
+/* ===== LOGIN BOX ===== */
+.login-box{
+  width:460px;
+  background:white;
+  padding:40px;
+  border-radius:14px;
+  box-shadow:0 25px 60px rgba(0,0,0,.15);
+  margin:40px auto 0 auto;
+}
+
+/* ===== ROLE BUTTONS ===== */
+.roles{
+  display:flex;
+  gap:12px;
+  margin-bottom:26px;
+}
+
+.roleBtn{
+  flex:1;
+  padding:12px 0;
+  border-radius:8px;
+  border:1px solid #c7d2fe;
+  background:#eef2ff;
+  font-size:14px;
+  font-weight:500;
+  cursor:pointer;
+  transition: all 0.3s ease;
+  user-select: none;
+}
+
+.roleBtn:hover{
+  background:#dbeafe;
+}
+
+.roleBtn.active{
+  background:#2563eb;
+  color:white;
+  border-color:#2563eb;
+}
+
+.roleBtn:focus{
+  outline:2px solid #2563eb;
+  outline-offset:2px;
+}
+
+/* ===== FORM ===== */
+h3{
+  font-size:15px;
+  margin-bottom:12px;
+  color:#1e293b;
+}
+
+input{
+  width:100%;
+  padding:12px;
+  margin-bottom:16px;
+  border-radius:8px;
+  border:1px solid #cbd5f5;
+  font-size:14px;
+  transition: border-color 0.3s ease;
+}
+
+input:focus{
+  outline:none;
+  border-color:#2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+.loginBtn{
+  width:100%;
+  padding:12px;
+  background:#2563eb;
+  color:white;
+  border:none;
+  border-radius:8px;
+  font-size:15px;
+  font-weight:500;
+  cursor:pointer;
+  transition: background 0.3s ease;
+}
+
+.loginBtn:hover{
+  background:#1d4ed8;
+}
+
+.loginBtn:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+.hidden{display:none;}
+
+/* ===== LINKS ===== */
+.link {
+  color: #2563eb;
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.3s ease;
+}
+
+.link:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+/* ===== FORGOT PASSWORD LINKS ===== */
+#adminForgot, #facultyForgot, #studentForgot, #registerText {
+  margin-top: 15px;
+  text-align: center;
+}
+
+/* ===== LOADING STATE ===== */
+.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ===== ERROR MESSAGE ===== */
+.error-message {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  text-align: center;
+  display: none;
+}
+
+.error-message.show {
+  display: block;
+}
+
+/* ===== SESSION INFO ===== */
+.session-info {
+  background: #e0e7ff;
+  color: #1e3a8a;
+  padding: 8px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  margin-bottom: 15px;
+  display: inline-block;
+}
+
+/* ===== KEYBOARD SHORTCUT HINT ===== */
+.shortcut-hint {
+  margin-top: 15px;
+  font-size: 12px;
+  color: #6b7280;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 10px;
+}
+
+.shortcut-hint span {
+  display: inline-block;
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin: 0 2px;
+  font-weight: 500;
+}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:900px){
+  .hero{
+    padding:50px 20px 100px 20px;
+  }
+  .login-box{
+    width:90%;
+    padding: 30px 20px;
+  }
+  .roles {
+    flex-direction: column;
+  }
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.login-box {
+  animation: fadeIn 0.5s ease-out;
+}
+</style>
+</head>
+
+<body>
+
+<section class="hero">
+  <div class="hero-content">
+    <h1>Smart AI-Based Timetable Generator</h1>
+    <p>
+      Automated academic scheduling system with role-based access for Admin,
+      Faculty and Students.
+    </p>
+  </div>
+
+  <div class="login-box">
+    <!-- Session Info (shown if there's an active session) -->
+    <!-- <div id="activeSessionInfo" class="session-info hidden">
+      <span id="sessionMessage"></span>
+    </div> -->
+
+    <div class="roles">
+      <button class="roleBtn" onclick="selectRole('faculty',this)" type="button">Faculty</button>
+      <button class="roleBtn" onclick="selectRole('admin',this)" type="button">Admin</button>
+      <button class="roleBtn" onclick="selectRole('student',this)" type="button">Student</button>
+    </div>
+
+    <!-- Error Message Container -->
+    <div id="errorMessage" class="error-message"></div>
+
+    <div id="loginBox" class="hidden">
+      <h3 id="loginTitle"></h3>
+
+      <input id="loginUser" placeholder="Username" autocomplete="off" type="text">
+      <input type="password" id="loginPass" placeholder="Password" autocomplete="off">
+
+      <button class="loginBtn" onclick="login()" id="loginButton" type="button">Login</button>
+
+      <!-- ADMIN FORGOT PASSWORD -->
+      <p id="adminForgot" class="hidden">
+        <a href="forget-password.html" class="link">Forgot Password?</a>
+      </p>
+
+      <!-- FACULTY FORGOT PASSWORD -->
+      <p id="facultyForgot" class="hidden">
+        <a href="faculty-forget-password.html" class="link">Forgot Password?</a>
+      </p>
+
+      <!-- STUDENT FORGOT PASSWORD -->
+      <p id="studentForgot" class="hidden">
+        <a href="student-forget-password.html" class="link">Forgot Password?</a>
+      </p>
+
+      <!-- FACULTY REGISTER -->
+      <p id="registerText" class="hidden">
+        <a href="registration.html" class="link">New Faculty? Register here</a>
+      </p>
+    </div>
+
+    <!-- Keyboard Shortcut Hint -->
+    <!-- <div class="shortcut-hint">
+      <span>1</span> Faculty · <span>2</span> Admin · <span>3</span> Student · <span>Enter</span> Login
+    </div> -->
+
+    <!-- Logout from other tabs message -->
+    <div id="logoutMessage" class="hidden" style="margin-top: 15px; padding: 10px; background: #fef3c7; border-radius: 8px; color: #92400e; font-size: 14px;">
+      <span id="logoutMessageText"></span>
+    </div>
+  </div>
+</section>
+
+<script>
+let selectedRole = "";
+let loginInProgress = false;
+
+/* ================= CHECK FOR EXISTING SESSION ================= */
+document.addEventListener('DOMContentLoaded', function() {
+  // Check if there's an active session
+  const session = SessionManager.getSession();
+  
+  if (session && session.loggedIn) {
+    // Show session info
+    const sessionInfo = document.getElementById('activeSessionInfo');
+    const sessionMessage = document.getElementById('sessionMessage');
+    
+    let roleDisplay = '';
+    switch(session.role) {
+      case 'admin': roleDisplay = 'Administrator'; break;
+      case 'faculty': roleDisplay = 'Faculty Member'; break;
+      case 'student': roleDisplay = 'Student'; break;
+      default: roleDisplay = session.role;
+    }
+    
+    // sessionMessage.textContent = `Active session: Logged in as ${roleDisplay}`;
+    // sessionInfo.classList.remove('hidden');
+    
+    // Ask if user wants to continue or login as different user
+    setTimeout(() => {
+      if (confirm(`You are already logged in as ${roleDisplay}. Do you want to continue to your dashboard?`)) {
+        SessionManager.redirectToDashboard(session.role);
+      }
+    }, 500);
+  }
+  
+  // Check for logout message from another tab
+  const logoutMsg = sessionStorage.getItem('logout_message');
+  if (logoutMsg) {
+    showLogoutMessage(logoutMsg);
+    sessionStorage.removeItem('logout_message');
+  }
+});
+
+/* ================= PREVENT DEFAULT FORM SUBMISSION ================= */
+document.addEventListener('submit', function(e) {
+  e.preventDefault();
+  return false;
+});
+
+/* ================= SHOW LOGOUT MESSAGE ================= */
+function showLogoutMessage(message) {
+  const logoutMsgDiv = document.getElementById('logoutMessage');
+  const logoutMsgText = document.getElementById('logoutMessageText');
+  
+  logoutMsgText.textContent = message;
+  logoutMsgDiv.classList.remove('hidden');
+  
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    logoutMsgDiv.classList.add('hidden');
+  }, 5000);
+}
+
+/* ================= SHOW ERROR MESSAGE ================= */
+function showError(message) {
+  const errorDiv = document.getElementById('errorMessage');
+  errorDiv.textContent = message;
+  errorDiv.classList.add('show');
+  
+  // Auto-hide after 3 seconds
+  setTimeout(() => {
+    errorDiv.classList.remove('show');
+  }, 3000);
+}
+
+/* ================= ROLE SELECTION ================= */
+function selectRole(role, btn){
+  // Prevent event bubbling
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  
+  selectedRole = role;
+  document.getElementById("loginBox").classList.remove("hidden");
+
+  document.querySelectorAll(".roleBtn")
+    .forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+
+  const title = document.getElementById("loginTitle");
+  const userInput = document.getElementById("loginUser");
+  const passInput = document.getElementById("loginPass");
+  
+  // Clear any previous error messages
+  document.getElementById('errorMessage').classList.remove('show');
+  
+  // Reset input borders
+  userInput.style.borderColor = '#cbd5f5';
+  passInput.style.borderColor = '#cbd5f5';
+
+  // Reset forgot links
+  document.getElementById("adminForgot").classList.add("hidden");
+  document.getElementById("facultyForgot").classList.add("hidden");
+  document.getElementById("studentForgot").classList.add("hidden");
+  document.getElementById("registerText").classList.add("hidden");
+
+  if(role === "admin"){
+    title.innerText = "Admin Login";
+    userInput.placeholder = "Admin Username";
+    userInput.type = "text";
+    document.getElementById("adminForgot").classList.remove("hidden");
+  }
+  else if(role === "faculty"){
+    title.innerText = "Faculty Login";
+    userInput.placeholder = "Faculty Username";
+    userInput.type = "text";
+    document.getElementById("facultyForgot").classList.remove("hidden");
+    document.getElementById("registerText").classList.remove("hidden");
+  }
+  else{
+    title.innerText = "Student Login";
+    userInput.placeholder = "Student Email";
+    userInput.type = "email";
+    document.getElementById("studentForgot").classList.remove("hidden");
+  }
+  
+  // Focus on username input
+  setTimeout(() => userInput.focus(), 100);
+}
+
+/* ================= VALIDATE INPUT ================= */
+function validateInput(role, username, password) {
+  if (!username || !password) {
+    showError("Please fill all fields");
+    return false;
+  }
+  
+  // Role-specific validation
+  if (role === "student") {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(username)) {
+      showError("Please enter a valid email address");
+      document.getElementById("loginUser").style.borderColor = "#dc2626";
+      return false;
+    }
+  }
+  
+  if (password.length < 4) {
+    showError("Password must be at least 4 characters");
+    document.getElementById("loginPass").style.borderColor = "#dc2626";
+    return false;
+  }
+  
+  return true;
+}
+
+/* ================= SET LOADING STATE ================= */
+function setLoading(isLoading) {
+  const loginBtn = document.getElementById("loginButton");
+  const roleBtns = document.querySelectorAll(".roleBtn");
+  
+  loginInProgress = isLoading;
+  
+  if (isLoading) {
+    loginBtn.textContent = "Logging in...";
+    loginBtn.disabled = true;
+    roleBtns.forEach(btn => btn.disabled = true);
+  } else {
+    loginBtn.textContent = "Login";
+    loginBtn.disabled = false;
+    roleBtns.forEach(btn => btn.disabled = false);
+  }
+}
+
+/* ================= LOGIN ================= */
+function login(){
+  // Prevent multiple login attempts
+  if (loginInProgress) return;
+  
+  const u = document.getElementById("loginUser").value.trim();
+  const p = document.getElementById("loginPass").value.trim();
+
+  if(!selectedRole){
+    showError("Please select a role");
+    return;
+  }
+
+  // Validate input
+  if (!validateInput(selectedRole, u, p)) {
+    return;
+  }
+
+  // Set loading state
+  setLoading(true);
+
+  /* ===== ADMIN LOGIN ===== */
+  if (selectedRole === "admin") {
+    // Simulate API call (replace with actual admin authentication)
+    setTimeout(() => {
+      if (u === "admin" && p === "admin123") {
+        // Clear any existing session
+        SessionManager.clearSession();
+        
+        // Set session using SessionManager
+        SessionManager.setSession("admin", { username: "admin" });
+        
+        // Also set for backward compatibility
+        localStorage.setItem("role", "admin");
+        localStorage.setItem("adminUser", "admin");
+        
+        // Redirect to admin dashboard
+        location.href = "admin.html";
+      } else {
+        showError("Invalid admin credentials");
+        setLoading(false);
+        document.getElementById("loginUser").style.borderColor = "#dc2626";
+        document.getElementById("loginPass").style.borderColor = "#dc2626";
+      }
+    }, 500);
+  }
+
+  /* ===== FACULTY LOGIN ===== */
+  if(selectedRole === "faculty"){
+    fetch("/faculty/login", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ username:u, password:p })
+    })
+    .then(res => {
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      return res.json();
+    })
+    .then(data => {
+      if(data.success){
+        // Clear any existing session
+        SessionManager.clearSession();
+        
+        // Set session using SessionManager
+        SessionManager.setSession("faculty", { username: u });
+        
+        // Also set for backward compatibility
+        localStorage.setItem("role","faculty");
+        localStorage.setItem("username", u);
+        
+        // Store additional faculty info if available
+        if (data.faculty) {
+          if (data.faculty.name) localStorage.setItem("facultyName", data.faculty.name);
+          if (data.faculty.id || data.faculty._id) localStorage.setItem("facultyId", data.faculty.id || data.faculty._id);
+          if (data.faculty.designation || data.faculty.role) localStorage.setItem("designation", data.faculty.designation || data.faculty.role);
+        }
+        
+        location.href = "faculty.html";
+      } else {
+        showError(data.message || "Invalid credentials");
+        setLoading(false);
+        document.getElementById("loginUser").style.borderColor = "#dc2626";
+        document.getElementById("loginPass").style.borderColor = "#dc2626";
+      }
+    })
+    .catch(error => {
+      console.error("Login error:", error);
+      showError("Network error. Please try again.");
+      setLoading(false);
+    });
+  }
+
+  /* ===== STUDENT LOGIN ===== */
+  if(selectedRole === "student"){
+    fetch("/student/login", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ email:u, password:p })
+    })
+    .then(res => {
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      return res.json();
+    })
+    .then(data => {
+      if(data.success){
+        // Clear any existing session
+        SessionManager.clearSession();
+        
+        // Set session using SessionManager
+        SessionManager.setSession("student", { username: u, email: u });
+        
+        // Also set for backward compatibility
+        localStorage.setItem("role","student");
+        if (data.student) {
+          if (data.student.name) localStorage.setItem("studentName", data.student.name);
+          if (data.student.id || data.student._id) localStorage.setItem("studentId", data.student.id || data.student._id);
+        }
+        
+        location.href = "student.html";
+      } else {
+        showError(data.message || "Invalid credentials");
+        setLoading(false);
+        document.getElementById("loginUser").style.borderColor = "#dc2626";
+        document.getElementById("loginPass").style.borderColor = "#dc2626";
+      }
+    })
+    .catch(error => {
+      console.error("Login error:", error);
+      showError("Network error. Please try again.");
+      setLoading(false);
+    });
+  }
+}
+
+/* ================= KEYBOARD SHORTCUTS - FIXED ================= */
+document.addEventListener('keydown', function(e) {
+  // Check if the active element is an input field
+  const activeElement = document.activeElement;
+  const isInputField = activeElement && (
+    activeElement.tagName === 'INPUT' || 
+    activeElement.tagName === 'TEXTAREA' || 
+    activeElement.isContentEditable
+  );
+  
+  // If we're typing in an input field, don't trigger shortcuts
+  if (isInputField) {
+    return; // Let the normal typing happen
+  }
+  
+  // Number keys for role selection (1-3) - only when not typing
+  if (e.key >= '1' && e.key <= '3') {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const roles = ['faculty', 'admin', 'student'];
+    const index = parseInt(e.key) - 1;
+    const roleBtns = document.querySelectorAll('.roleBtn');
+    if (roleBtns[index]) {
+      selectRole(roles[index], roleBtns[index]);
+    }
+  }
+  
+  // Enter key for login - only when not typing
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    e.stopPropagation();
+    const loginBox = document.getElementById('loginBox');
+    if (!loginBox.classList.contains('hidden') && !loginInProgress) {
+      login();
+    }
+  }
+});
+
+/* ================= CLEAR FORM ON PAGE LOAD ================= */
+window.addEventListener('load', function() {
+  // Clear any stale data
+  if (!SessionManager.getSession()) {
+    document.getElementById("loginUser").value = "";
+    document.getElementById("loginPass").value = "";
+  }
+});
+
+/* ================= PREVENT DEFAULT CLICK BEHAVIOR ================= */
+document.querySelectorAll('.roleBtn, .loginBtn, .link').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    // Only prevent default if it's not an anchor tag with href
+    if (btn.tagName !== 'A') {
+      e.preventDefault();
+    }
+    e.stopPropagation();
+  });
+});
+
+</script>
+
+</body>
+</html>

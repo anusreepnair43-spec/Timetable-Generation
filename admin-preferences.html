@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin Dashboard - Faculty Preference Management System</title>
+
+<style>
+*{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
+  font-family:'Poppins',sans-serif;
+}
+
+body{
+  height:100vh;
+  background:linear-gradient(135deg,#243b8f,#1b2f6b);
+}
+
+/* TOPBAR */
+.topbar{
+  height:90px;
+  color:white;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:34px;
+  font-weight:700;
+  letter-spacing:1px;
+}
+
+/* LAYOUT */
+.container{
+  display:flex;
+  height:calc(100vh - 90px);
+  padding:35px;
+  gap:35px;
+}
+
+/* SIDEBAR - EXACTLY AS ORIGINAL - NO CHANGES */
+.sidebar{
+  width:260px;
+  background:#fff;
+  border-radius:16px;
+  box-shadow:0 15px 40px rgba(0,0,0,0.18);
+  display:flex;
+  flex-direction:column;
+  padding:25px 0;
+}
+
+.sidebar h2{
+  text-align:center;
+  margin-bottom:20px;
+  color:#243b8f;
+  font-size:24px;
+  font-weight:700;
+}
+
+.sidebar a{
+  padding:14px 26px;
+  cursor:pointer;
+  color:#333;
+  text-decoration:none;
+  transition: all 0.3s ease;
+  font-size:15px;
+  font-weight:500;
+}
+
+.sidebar a.active{
+  background:#243b8f;
+  color:white;
+  font-weight:600;
+}
+
+/* LOGOUT - EXACTLY AS ORIGINAL */
+.logout{
+  margin:20px;
+  margin-top:auto;
+  background:#e63946;
+  padding:12px;
+  text-align:center;
+  border-radius:12px;
+  cursor:pointer;
+  color:white;
+  font-weight:600;
+  font-size:15px;
+  letter-spacing:0.3px;
+}
+.logout:hover{
+  background:#c53030;
+}
+
+/* MAIN CONTENT - ENHANCED FONTS */
+.content{
+  flex:1;
+  background:#fff;
+  border-radius:20px;
+  padding:35px;
+  overflow-y:auto;
+  box-shadow:0 15px 40px rgba(0,0,0,0.18);
+}
+
+/* CARD - ENHANCED FONTS */
+.card{
+  background:#fff;
+  border-radius:20px;
+  padding:35px;
+  margin-bottom:35px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.1);
+}
+
+.card h2{
+  margin-bottom:25px;
+  color:#243b8f;
+  font-size:34px;
+  font-weight:800;
+  border-bottom:3px solid #f0f4ff;
+  padding-bottom:18px;
+}
+
+/* FACULTY BLOCK - ENHANCED FONTS */
+.faculty-block{
+  margin-bottom:55px;
+  padding:10px;
+}
+
+.faculty-block h3{
+  margin-bottom:20px;
+  color:#243b8f;
+  font-size:28px;
+  font-weight:800;
+  letter-spacing:0.5px;
+}
+
+.faculty-block p{
+  font-size:18px;
+  margin-bottom:18px;
+  color:#2c3e50;
+}
+
+.faculty-block p b{
+  color:#243b8f;
+  font-weight:800;
+}
+
+/* TABLE - ENHANCED FONTS */
+table{
+  width:100%;
+  border-collapse:collapse;
+  table-layout: fixed;
+  border-radius:12px;
+  overflow:hidden;
+  margin-top:10px;
+}
+
+thead{
+  background:#243b8f;
+  color:white;
+}
+
+th, td{
+  padding:16px 12px;
+  text-align:center;
+  border-bottom:2px solid #f6f8ff;
+  word-wrap: break-word;
+}
+
+th{
+  font-weight:800;
+  font-size:18px;
+  letter-spacing:0.5px;
+  text-transform:uppercase;
+}
+
+td{
+  font-size:17px;
+  color:#1e2a3a;
+}
+
+tr:nth-child(even){
+  background:#f6f8ff;
+}
+
+tbody tr:hover{
+  background:#d9e1ff;
+  transition:0.2s;
+}
+
+/* SECTION HEADERS - ENHANCED FONTS */
+h4{
+  font-size:22px;
+  font-weight:800;
+  color:#243b8f;
+  margin-top:25px;
+  margin-bottom:20px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+
+/* SUBTITLE TEXT */
+.subtitle-text{
+  font-size:18px;
+  color:#4a6a8a;
+  margin-bottom:30px;
+  font-weight:500;
+}
+
+/* FACULTY INFO CARD - ENHANCED */
+.faculty-info-card{
+  background:#f6f8ff;
+  padding:20px 25px;
+  border-radius:16px;
+  margin-bottom:25px;
+  display:flex;
+  align-items:center;
+  gap:30px;
+  flex-wrap:wrap;
+  border:1px solid #d9e1ff;
+}
+
+.faculty-info-text{
+  margin:0;
+  font-size:18px;
+  color:#2c3e50;
+}
+
+.faculty-info-strong{
+  color:#243b8f;
+  font-weight:800;
+  font-size:18px;
+}
+
+.faculty-badge{
+  background:#243b8f;
+  color:white;
+  padding:10px 24px;
+  border-radius:40px;
+  font-size:17px;
+  font-weight:700;
+}
+
+/* CODE STYLING - ENHANCED */
+.subject-code{
+  background:#eef2f6;
+  padding:6px 14px;
+  border-radius:8px;
+  font-family:'Courier New', monospace;
+  font-size:17px;
+  font-weight:600;
+}
+
+/* PRIORITY BADGES - ENHANCED */
+.priority-badge-theory{
+  background:#243b8f;
+  color:white;
+  padding:6px 18px;
+  border-radius:30px;
+  font-weight:700;
+  font-size:17px;
+  display:inline-block;
+}
+
+.priority-badge-lab{
+  background:#2c6e49;
+  color:white;
+  padding:6px 18px;
+  border-radius:30px;
+  font-weight:700;
+  font-size:17px;
+  display:inline-block;
+}
+
+/* EMPTY STATE - ENHANCED */
+.empty-state{
+  text-align:center;
+  padding:60px 30px;
+  background:#f8fafd;
+  border-radius:20px;
+}
+
+.empty-title{
+  color:#243b8f;
+  font-size:28px;
+  font-weight:800;
+  margin-bottom:15px;
+}
+
+.empty-description{
+  color:#5f7a92;
+  font-size:20px;
+}
+
+/* ERROR STATE - ENHANCED */
+.error-container{
+  text-align:center;
+  padding:60px 30px;
+  background:#fff4f4;
+  border-radius:20px;
+  border:2px solid #ffcdd2;
+}
+
+.error-title{
+  color:#b33a3a;
+  font-size:28px;
+  font-weight:800;
+  margin-bottom:15px;
+}
+
+.error-message{
+  color:#5f7a92;
+  font-size:20px;
+  margin-bottom:25px;
+}
+
+.retry-button{
+  background:#243b8f;
+  color:white;
+  border:none;
+  padding:16px 40px;
+  border-radius:14px;
+  font-size:20px;
+  font-weight:700;
+  cursor:pointer;
+  transition:0.2s;
+}
+
+.retry-button:hover{
+  background:#1a2e5c;
+}
+
+/* LOADING TEXT */
+.loading-text{
+  font-size:20px;
+  color:#4a6a8a;
+  font-weight:500;
+  padding:20px 0;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<!-- TOP HEADER -->
+<div class="topbar">
+  ADMIN DASHBOARD - FACULTY PREFERENCE MANAGEMENT
+</div>
+
+<div class="container">
+
+  <!-- SIDEBAR - COMPLETELY UNCHANGED - ORIGINAL EXACT -->
+  <div class="sidebar">
+    <h2>Admin</h2>
+
+    <!-- Links for internal sections (only dashboard) -->
+    <a href="admin.html?section=pending" class="sidebar-link">Pending Faculty</a>
+    <a href="admin.html?section=approved" class="sidebar-link">Approved Faculty</a>
+    <a href="admin.html?section=upload" class="sidebar-link">Upload Students</a>
+    <a href="manage-subjects.html" class="sidebar-link">Manage Subjects</a>
+    <a href="admin-preferences.html" class="sidebar-link active">Faculty Preferences</a>
+    <a href="sorted-preferences.html" class="sidebar-link">Detailed Faculty Preferences</a>
+    <a href="admin-workload.html" class="sidebar-link active">Manage Workload</a>
+    <a href="timetable_rules.html" class="sidebar-link">Timetable Rules</a>
+    <a href="admin.html#facultyPrefs" class="sidebar-link">Time Preferences</a>
+
+    <div style="flex:1"></div>
+    <div class="logout" onclick="logoutAdmin()">Logout</div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="content">
+    <div class="card" id="allPrefs">
+      <h2>FACULTY SUBJECT PREFERENCES</h2>
+      <p class="subtitle-text">Review and manage faculty teaching preferences for theory and laboratory subjects.</p>
+      <p class="loading-text">Loading preferences...</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Highlight the current page in sidebar
+document.addEventListener('DOMContentLoaded', function() {
+  const currentPage = window.location.pathname.split('/').pop();
+  const sidebarLinks = document.querySelectorAll('.sidebar-link');
+  
+  sidebarLinks.forEach(link => {
+    // Remove existing active class
+    link.classList.remove('active');
+    
+    // Check if this link points to the current page
+    const linkHref = link.getAttribute('href');
+    if (linkHref === currentPage) {
+      link.classList.add('active');
+    }
+    
+    // For links with query parameters, check if they match
+    if (linkHref.includes('?') && linkHref.split('?')[0] === currentPage) {
+      link.classList.add('active');
+    }
+  });
+  
+  // Special case: if we're on admin.html, check for section parameter
+  if (currentPage === 'admin.html') {
+    const urlParams = new URLSearchParams(window.location.search);
+    const section = urlParams.get('section');
+    
+    sidebarLinks.forEach(link => {
+      if (link.getAttribute('href') === `admin.html?section=${section}`) {
+        link.classList.add('active');
+      }
+    });
+  }
+});
+
+function logout(){
+  localStorage.clear();
+  location.href="index.html";
+}
+
+function logoutAdmin(){
+  localStorage.clear();
+  alert("Logged out successfully!");
+  location.href = "index.html";
+}
+
+async function loadPreferences(){
+  try{
+    const res = await fetch("/admin/all-preferences");
+    const data = await res.json();
+
+    if(!data || data.length === 0){
+      document.getElementById("allPrefs").innerHTML = `
+        <h2>FACULTY SUBJECT PREFERENCES</h2>
+        <p class="subtitle-text">Review and manage faculty teaching preferences for theory and laboratory subjects.</p>
+        <div class="empty-state">
+          <div class="empty-title">NO PREFERENCES SUBMITTED YET</div>
+          <p class="empty-description">Faculty members have not submitted their subject preferences.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // group by faculty
+    const grouped = {};
+
+    data.forEach(row => {
+      if (!grouped[row.facultyUsername]) {
+          grouped[row.facultyUsername] = {
+    facultyName: row.facultyName,
+    designation: row.designation,
+    experience: row.experience,
+    theoryPreferences: [],
+    labPreferences: []
+  };
+
+      }
+
+      grouped[row.facultyUsername].theoryPreferences.push(...row.theoryPreferences);
+      grouped[row.facultyUsername].labPreferences.push(...row.labPreferences);
+
+    });
+    
+let html = `<h2>FACULTY SUBJECT PREFERENCES</h2>
+            <p class="subtitle-text">Review and manage faculty teaching preferences for theory and laboratory subjects.</p>`;
+
+Object.entries(grouped).forEach(([username, f]) => {
+  // Remove duplicates based on subject code and priority
+  const uniqueTheory = f.theoryPreferences
+    .filter((pref, index, self) => 
+      index === self.findIndex(p => p.code === pref.code && p.priority === pref.priority)
+    )
+    .sort((a,b)=>a.priority-b.priority);
+    
+  const uniqueLab = f.labPreferences
+    .filter((pref, index, self) => 
+      index === self.findIndex(p => p.code === pref.code && p.priority === pref.priority)
+    )
+    .sort((a,b)=>a.priority-b.priority);
+
+  html += `
+    <div class="faculty-block">
+      <h3>${f.facultyName || 'FACULTY MEMBER'}</h3>
+      <div class="faculty-info-card">
+        <p class="faculty-info-text"><strong class="faculty-info-strong">USERNAME:</strong> ${username}</p>
+        <p class="faculty-info-text"><strong class="faculty-info-strong">DESIGNATION:</strong> ${f.designation || 'Faculty'}</p>
+        <p class="faculty-info-text"><strong class="faculty-info-strong">EXPERIENCE:</strong> ${f.experience || '0'} years</p>
+        <span class="faculty-badge">${f.designation || 'FACULTY'}</span>
+      </div>
+
+      <h4>THEORY SUBJECT PREFERENCES</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>SUBJECT NAME</th>
+            <th>CODE</th>
+            <th>ABBREVIATION</th>
+            <th>SEMESTER</th>
+            <th>CREDITS</th>
+            <th>PRIORITY</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  if (uniqueTheory.length === 0) {
+    html += `<tr><td colspan="6" style="text-align:center; padding:35px; color:#5f7a92; font-size:18px;">NO THEORY PREFERENCES SUBMITTED</td></tr>`;
+  } else {
+    uniqueTheory.forEach(p=>{
+      html += `
+          <tr>
+            <td style="font-weight:700; font-size:17px;">${p.subjectName || 'NOT SPECIFIED'}</td>
+            <td><span class="subject-code">${p.code || 'N/A'}</span></td>
+            <td style="font-size:17px;">${p.abbreviation || 'N/A'}</td>
+            <td style="font-size:17px;">SEMESTER ${p.semester || 'N/A'}</td>
+            <td style="font-size:17px;">${p.credit || '0'}</td>
+            <td><span class="priority-badge-theory">#${p.priority || 'N/A'}</span></td>
+          </tr>
+        `;
+    });
+  }
+
+  html += `
+        </tbody>
+      </table>
+
+      <h4 style="margin-top:35px;">LABORATORY SUBJECT PREFERENCES</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>SUBJECT NAME</th>
+            <th>CODE</th>
+            <th>ABBREVIATION</th>
+            <th>SEMESTER</th>
+            <th>CREDITS</th>
+            <th>PRIORITY</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  if (uniqueLab.length === 0) {
+    html += `<tr><td colspan="6" style="text-align:center; padding:35px; color:#5f7a92; font-size:18px;">NO LABORATORY PREFERENCES SUBMITTED</td></tr>`;
+  } else {
+    uniqueLab.forEach(p=>{
+      html += `
+          <tr>
+            <td style="font-weight:700; font-size:17px;">${p.subjectName || 'NOT SPECIFIED'}</td>
+            <td><span class="subject-code">${p.code || 'N/A'}</span></td>
+            <td style="font-size:17px;">${p.abbreviation || 'N/A'}</td>
+            <td style="font-size:17px;">SEMESTER ${p.semester || 'N/A'}</td>
+            <td style="font-size:17px;">${p.credit || '0'}</td>
+            <td><span class="priority-badge-lab">#${p.priority || 'N/A'}</span></td>
+          </tr>
+        `;
+    });
+  }
+
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
+});
+
+document.getElementById("allPrefs").innerHTML = html;
+
+  }catch(err){
+    console.error(err);
+    document.getElementById("allPrefs").innerHTML = `
+      <h2>FACULTY SUBJECT PREFERENCES</h2>
+      <p class="subtitle-text">Review and manage faculty teaching preferences for theory and laboratory subjects.</p>
+      <div class="error-container">
+        <div class="error-title">ERROR LOADING DATA</div>
+        <p class="error-message">Unable to fetch faculty preferences. Please try again.</p>
+        <button class="retry-button" onclick="loadPreferences()">
+          RETRY
+        </button>
+      </div>
+    `;
+  }
+}
+
+loadPreferences();
+</script>
+
+</body>
+</html>

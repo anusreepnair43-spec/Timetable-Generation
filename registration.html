@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Faculty Registration</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+*{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
+  font-family:'Inter', sans-serif;
+}
+
+body{
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:linear-gradient(135deg,#1e3a8a,#2563eb);
+}
+
+/* ===== CARD ===== */
+.card{
+  background:white;
+  width:420px;
+  padding:32px;
+  border-radius:18px;
+  box-shadow:0 25px 45px rgba(0,0,0,.2);
+  text-align:center;
+}
+
+.card h2{
+  color:#1e3a8a;
+  margin-bottom:22px;
+}
+
+/* ===== INPUTS ===== */
+input, select{
+  width:100%;
+  padding:12px 14px;
+  margin:10px 0;
+  border-radius:10px;
+  border:1px solid #cbd5f5;
+  font-size:14px;
+}
+
+input:focus, select:focus{
+  outline:none;
+  border-color:#2563eb;
+}
+
+/* ===== BUTTON ===== */
+button{
+  width:100%;
+  padding:14px;
+  margin-top:10px;
+  background:#2563eb;
+  color:white;
+  border:none;
+  border-radius:12px;
+  font-size:16px;
+  font-weight:500;
+  cursor:pointer;
+  transition:.2s;
+}
+
+button:hover{
+  background:#1e40af;
+}
+
+/* ===== LINK ===== */
+.link{
+  display:inline-block;
+  margin-top:14px;
+  color:#2563eb;
+  text-decoration:none;
+  font-size:14px;
+}
+
+.link:hover{
+  text-decoration:underline;
+}
+
+.error {
+  color: #dc2626;
+  font-size: 12px;
+  text-align: left;
+  margin-top: -6px;
+  margin-bottom: 8px;
+}
+
+/* ===== MOBILE ===== */
+@media(max-width:480px){
+  .card{
+    width:90%;
+    padding:25px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+  <h2>Faculty Registration</h2>
+
+  <input id="name" placeholder="Full Name">
+  <div id="nameErr" class="error"></div>
+
+  <input id="email" type="email" placeholder="Email Address">
+  <div id="emailErr" class="error"></div>
+
+  <select id="deptSelect" onchange="toggleOtherDept()">
+    <option value="">Select Department</option>
+    <option value="CSE">CSE</option>
+    <option value="IT">IT</option>
+    <option value="ECE">ECE</option>
+    <option value="EEE">EEE</option>
+    <option value="ME">ME</option>
+    <option value="Others">Others</option>
+  </select>
+  <div id="deptErr" class="error"></div>
+
+  <input id="otherDept"
+         placeholder="Enter your department"
+         style="display:none;">
+  <div id="otherDeptErr" class="error"></div>
+
+  <input id="user" placeholder="Faculty ID">
+  <div id="userErr" class="error"></div>
+
+  <input id="pass" type="password" placeholder="Password">
+  <div id="passErr" class="error"></div>
+
+  <input id="confirmPass" type="password" placeholder="Retype Password">
+  <div id="confirmPassErr" class="error"></div>
+
+  <input id="experience" type="number" min="0" placeholder="Years of Experience">
+  <div id="expErr" class="error"></div>
+
+  <select id="role">
+    <option value="">Select Role</option>
+    <option value="Professor">Professor</option>
+    <option value="Associate Professor">Associate Professor</option>
+    <option value="Assistant Professor">Assistant Professor</option>
+  </select>
+  <div id="roleErr" class="error"></div>
+
+  <button onclick="register()">Submit for Approval</button>
+
+  <a href="index.html" class="link">Back to Login</a>
+</div>
+
+<script>
+/* ================= DEPARTMENT TOGGLE ================= */
+function toggleOtherDept(){
+  const select = document.getElementById("deptSelect");
+  const other = document.getElementById("otherDept");
+  if(select.value === "Others"){
+    other.style.display = "block";
+  } else {
+    other.style.display = "none";
+    other.value = "";
+  }
+}
+
+/* ================= REGEX RULES ================= */
+const nameRegex = /^[A-Za-z\s.]{3,50}$/;
+const usernameRegex = /^[A-Za-z0-9_-]{4,20}$/;
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/;
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,16}$/;
+
+/* ================= ERROR HELPERS ================= */
+function showError(id, message) {
+  document.getElementById(id).innerText = message;
+}
+function clearErrors() {
+  document.querySelectorAll(".error").forEach(e => e.innerText = "");
+}
+
+/* ================= REGISTER FUNCTION ================= */
+function register() {
+  clearErrors();
+  let valid = true;
+
+  const name = document.getElementById("name").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const deptSelect = document.getElementById("deptSelect").value;
+  const otherDept = document.getElementById("otherDept").value.trim();
+  const username = document.getElementById("user").value.trim();
+  const password = document.getElementById("pass").value;
+  const confirmPassword = document.getElementById("confirmPass").value.trim();
+  const experience = document.getElementById("experience").value;
+  const role = document.getElementById("role").value;
+
+  const department = deptSelect === "Others" ? otherDept : deptSelect;
+
+  /* ===== VALIDATIONS ===== */
+  if (!name) { showError("nameErr", "Name is required"); valid=false; }
+  else if (!nameRegex.test(name)) { showError("nameErr","Only letters, spaces & dots allowed"); valid=false; }
+
+  if (!email) { showError("emailErr", "Email is required"); valid=false; }
+  else if (!emailRegex.test(email)) { showError("emailErr","Enter a valid email"); valid=false; }
+
+  if (!department) { showError("deptErr", "Department is required"); valid=false; }
+
+  if (!username) { showError("userErr","Faculty ID is required"); valid=false; }
+  else if (!usernameRegex.test(username)){ showError("userErr","Only letters, numbers & - allowed (4–20 chars)"); valid=false; }
+
+  if (!password){ showError("passErr","Password is required"); valid=false; }
+  else if (!passwordRegex.test(password)) { showError("passErr","Password must be 8–16 chars & include uppercase, lowercase, number & special character"); valid=false; }
+
+  if (!confirmPassword){ showError("confirmPassErr","Please retype password"); valid=false; }
+  else if (password !== confirmPassword){ showError("confirmPassErr","Passwords do not match"); valid=false; }
+
+  if (experience===""){ showError("expErr","Experience is required"); valid=false; }
+  else if (experience<0 || experience>50){ showError("expErr","Experience must be 0–50 years"); valid=false; }
+
+  if (!role){ showError("roleErr","Please select a role"); valid=false; }
+
+  if (!valid) return;
+
+  /* ===== SEND DATA TO BACKEND ===== */
+  fetch("http://localhost:3000/faculty/register", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({
+      username,
+      password,
+      confirmPassword,
+      name,
+      email,
+      department,
+      experience,
+      role
+    })
+  })
+  .then(res=>res.json())
+  .then(data=>{
+    alert(data.message || "Submitted successfully");
+    if(data.success) location.href="index.html";
+  })
+  .catch(()=> alert("Server error"));
+}
+</script>
+
+</body>
+</html>

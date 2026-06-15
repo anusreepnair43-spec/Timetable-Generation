@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Manage Subjects</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+      height: 100vh;
+      background: linear-gradient(135deg, #243b8f, #1b2f6b);
+      overflow: hidden;
+    }
+
+    /* HEADER */
+    .top-header {
+      height: 70px;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-weight: 600;
+    }
+
+    /* LAYOUT */
+    .wrapper {
+      display: flex;
+      height: calc(100vh - 70px);
+      padding: 30px;
+      gap: 30px;
+      align-items: stretch;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 260px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+      display: flex;
+      flex-direction: column;
+      padding: 25px 0;
+    }
+
+    .sidebar h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #243b8f;
+    }
+
+    .sidebar a {
+      padding: 14px 26px;
+      cursor: pointer;
+      color: #333;
+      text-decoration: none;
+      transition: all 0.3s ease;
+    }
+
+    .sidebar a.active {
+      background: #243b8f;
+      color: white;
+    }
+
+    /* LOGOUT */
+    .logout {
+      margin: 25px;
+      margin-top: auto;
+      padding: 12px;
+      background: #ef4444;
+      color: white;
+      text-align: center;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    .logout:hover {
+      background: #dc2626;
+    }
+
+    /* MAIN */
+    .main {
+      flex: 1;
+      background: #fff;
+      border-radius: 20px;
+      padding: 30px;
+      overflow-y: auto;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .section h3 {
+      color: #243b8f;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    input,
+    select {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #cbd5f5;
+      font-size: 14px;
+    }
+
+    /* BUTTONS */
+    button {
+      padding: 10px 18px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    .save {
+      background: #243b8f;
+      color: white;
+    }
+
+    .lock {
+      background: #e63946;
+      color: white;
+    }
+
+    .unlock {
+      background: #38b2ac;
+      color: white;
+    }
+
+    .lock:hover {
+      background: #c53030;
+    }
+
+    .unlock:hover {
+      background: #2f9e99;
+    }
+
+    .save:hover {
+      background: #1b2f6b;
+    }
+
+    /* LOCK STATUS INDICATOR */
+    .lock-status {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 500;
+      margin-left: 15px;
+    }
+
+    .lock-status.locked {
+      background-color: #fee2e2;
+      color: #dc2626;
+    }
+
+    .lock-status.unlocked {
+      background-color: #dcfce7;
+      color: #16a34a;
+    }
+
+    /* BUTTON GROUP */
+    .button-group {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    /* TABLE */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th {
+      background: #243b8f;
+      color: white;
+      padding: 14px;
+      position: sticky;
+      top: 0;
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    td {
+      padding: 14px;
+      text-align: center;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    tr:nth-child(even) {
+      background: #f6f8ff;
+    }
+
+    tr:hover {
+      background: #eef2ff;
+    }
+
+    /* ACTION BUTTONS */
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .edit-btn {
+      background: #f59e0b;
+      color: white;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .edit-btn:hover {
+      background: #d97706;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
+    }
+
+    .delete-btn {
+      background: #e63946;
+      color: white;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+    }
+
+    .delete-btn:hover {
+      background: #c53030;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(229, 57, 70, 0.3);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    /* SCROLLABLE TABLE CONTAINER */
+    .table-container {
+      flex: 1;
+      overflow-y: auto;
+      max-height: calc(100vh - 450px);
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      margin-top: 10px;
+    }
+
+    .table-container table {
+      margin-top: 0;
+    }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      backdrop-filter: blur(3px);
+    }
+
+    .modal {
+      background: #fff;
+      border-radius: 20px;
+      width: 500px;
+      max-width: 95%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(-30px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .modal-header {
+      padding: 20px 25px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f8fafc;
+      border-radius: 20px 20px 0 0;
+    }
+
+    .modal-header h4 {
+      margin: 0;
+      color: #243b8f;
+      font-size: 20px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #64748b;
+      padding: 0;
+      margin: 0;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+
+    .modal-close:hover {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    .modal-body {
+      padding: 25px;
+    }
+
+    .modal-footer {
+      padding: 20px 25px;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .modal-footer button {
+      margin: 0;
+      padding: 12px 24px;
+    }
+
+    .btn-cancel {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-cancel:hover {
+      background: #5a6268;
+    }
+
+    .btn-update {
+      background: #28a745;
+      color: white;
+    }
+
+    .btn-update:hover {
+      background: #218838;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+      color: #374151;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+
+    .form-row .form-group {
+      flex: 1;
+      margin-bottom: 0;
+    }
+
+    @media(max-width:900px) {
+      .wrapper {
+        flex-direction: column;
+      }
+
+      .sidebar {
+        width: 100%;
+        flex-direction: row;
+        justify-content: space-around;
+      }
+
+      .button-group {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .form-row {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <script>
+    if (localStorage.getItem("role") !== "admin") {
+      location.href = "index.html";
+    }
+  </script>
+
+  <div class="top-header">
+    Admin Dashboard
+  </div>
+
+  <div class="wrapper">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <h2>Admin</h2>
+
+      <!-- Links for internal sections (only dashboard) -->
+      <a href="admin.html?section=pending" class="sidebar-link">Pending Faculty</a>
+      <a href="admin.html?section=approved" class="sidebar-link">Approved Faculty</a>
+      <a href="admin.html?section=upload" class="sidebar-link">Upload Students</a>
+      <a href="manage-subjects.html" class="sidebar-link active">Manage Subjects</a>
+      <a href="admin-preferences.html" class="sidebar-link">Faculty Preferences</a>
+      <a href="sorted-preferences.html" class="sidebar-link">Detailed Faculty Preferences</a>
+      <a href="admin-workload.html" class="sidebar-link">Manage Workload</a>
+      <a href="timetable_rules.html" class="sidebar-link">Timetable Rules</a>
+      <a href="admin.html#facultyPrefs" class="sidebar-link">Time Preferences</a>
+
+      <div style="flex:1"></div>
+      <div class="logout" onclick="logoutAdmin()">Logout</div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+
+      <!-- DEADLINE -->
+      <div class="section">
+        <h3>Preference Deadline</h3>
+
+        <div class="button-group">
+          <input type="datetime-local" id="deadline">
+          <button class="save" onclick="saveDeadline()">Save Deadline</button>
+          <span id="lockStatus" class="lock-status"></span>
+        </div>
+
+        <p id="deadlineInfo" style="margin-top:12px;color:#555;"></p>
+      </div>
+
+      <!-- ACTIVE SEMESTER -->
+      <div class="section" style="margin-top:30px;">
+        <h3>
+          <i class="fas fa-calendar-alt" style="color:#f59e0b;"></i>
+          Active Semester Type
+        </h3>
+        <div class="button-group">
+          <select id="activeSemesterType" style="padding:10px 14px; border-radius:10px; border:1px solid #cbd5f5;">
+            <option value="ALL">ALL Semesters</option>
+            <option value="ODD">ODD Semesters (1, 3, 5...)</option>
+            <option value="EVEN">EVEN Semesters (2, 4, 6...)</option>
+          </select>
+          <button class="save" onclick="saveActiveSemester(event)">Save Semester</button>
+        </div>
+        <p id="activeSemesterInfo" style="margin-top:12px;color:#555;"></p>
+      </div>
+
+      <!-- ADD SUBJECT -->
+      <div class="section" style="margin-top:30px;">
+        <h3>
+          <i class="fas fa-plus-circle" style="color:#28a745;"></i>
+          Add Subject
+        </h3>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <input type="number" id="semester" placeholder="Semester" min="1" />
+          <input type="text" id="name" placeholder="Subject Name" />
+          <input type="text" id="code" placeholder="Subject Code" />
+          <input type="text" id="abbreviation" placeholder="Abbreviation" />
+          <input type="number" id="credit" placeholder="Credit" min="0" step="0.5" />
+          <input type="number" id="weeklyHours" placeholder="Weekly Hours" min="0" step="0.5">
+          <select id="type" required>
+            <option value="">-- Select Type --</option>
+            <option value="Theory">Theory</option>
+            <option value="Lab">Lab</option>
+            <option value="Project">Project</option>
+          </select>
+          <select id="department" required>
+            <option value="">-- Select Dept --</option>
+            <option value="CSE">CSE</option>
+            <option value="IT">IT</option>
+            <option value="ECE">ECE</option>
+            <option value="EEE">EEE</option>
+            <option value="ME">ME</option>
+          </select>
+          <input type="text" id="parallelGroupId" placeholder="Parallel Group ID (optional)"
+            title="Example: S6_PARALLEL_1" />
+
+          <button class="save" onclick="addSubject()">Add</button>
+        </div>
+        <p style="font-size:12px; color:#666; margin-top:5px;">Credit can be 0 or more (e.g., 0, 1, 1.5, 2, 3, 4)</p>
+      </div>
+
+      <!-- SUBJECT TABLE -->
+      <div class="section" style="margin-top:30px; flex: 1; display: flex; flex-direction: column;">
+        <h3>
+          <i class="fas fa-book" style="color:#243b8f;"></i>
+          Configured Subjects
+        </h3>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Semester</th>
+                <th>Subject Full Name</th>
+                <th>Code</th>
+                <th>Abbreviation</th>
+                <th>Credits</th>
+                <th>Weekly Hours</th>
+                 <th>Type</th>
+                <th>Department</th>
+                <th>Parallel Group</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="subjectTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Edit Subject Modal -->
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h4><i class="fas fa-edit"></i> Edit Subject</h4>
+        <button class="modal-close" onclick="closeEditModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editSubjectId">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Semester</label>
+            <input type="number" id="editSemester" min="1" required>
+          </div>
+          <div class="form-group">
+            <label>Subject Type</label>
+            <select id="editType" required>
+              <option value="Theory">Theory</option>
+              <option value="Lab">Lab</option>
+              <option value="Project">Project</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Department</label>
+            <select id="editDepartment" required>
+              <option value="CSE">CSE</option>
+              <option value="IT">IT</option>
+              <option value="ECE">ECE</option>
+              <option value="EEE">EEE</option>
+              <option value="ME">ME</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Subject Name</label>
+          <input type="text" id="editName" placeholder="Subject Name" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Subject Code</label>
+            <input type="text" id="editCode" placeholder="Subject Code" required>
+          </div>
+          <div class="form-group">
+            <label>Abbreviation</label>
+            <input type="text" id="editAbbreviation" placeholder="Abbreviation" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Credits</label>
+            <input type="number" id="editCredit" min="0" step="0.5" placeholder="Credit" required>
+          </div>
+          <div class="form-group">
+            <label>Weekly Hours</label>
+            <input type="number" id="editWeeklyHours" min="0" step="0.5" placeholder="Weekly Hours" required>
+          </div>
+          <div class="form-group">
+            <label>Parallel Group</label>
+            <input type="text" id="editParallelGroupId" placeholder="Example: S6_PARALLEL_1">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeEditModal()">Cancel</button>
+        <button class="btn-update" onclick="updateSubject()">Update Subject</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Highlight the current page in sidebar
+    document.addEventListener('DOMContentLoaded', function () {
+      const currentPage = window.location.pathname.split('/').pop();
+      const sidebarLinks = document.querySelectorAll('.sidebar-link');
+
+      sidebarLinks.forEach(link => {
+        // Remove existing active class
+        link.classList.remove('active');
+
+        // Check if this link points to the current page
+        const linkHref = link.getAttribute('href');
+        if (linkHref === currentPage) {
+          link.classList.add('active');
+        }
+
+        // For links with query parameters, check if they match
+        if (linkHref.includes('?') && linkHref.split('?')[0] === currentPage) {
+          link.classList.add('active');
+        }
+      });
+
+      // Special case: if we're on admin.html, check for section parameter
+      if (currentPage === 'admin.html') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const section = urlParams.get('section');
+
+        sidebarLinks.forEach(link => {
+          if (link.getAttribute('href') === `admin.html?section=${section}`) {
+            link.classList.add('active');
+          }
+        });
+      }
+    });
+
+    function logoutAdmin() {
+      localStorage.clear();
+      location.href = "index.html";
+    }
+
+    /* ================= ACTIVE SEMESTER ================= */
+    async function loadActiveSemester() {
+      const activeSemesterInfo = document.getElementById("activeSemesterInfo");
+      const activeSemesterSelect = document.getElementById("activeSemesterType");
+
+      try {
+        const res = await fetch("/api/active-semester");
+        if (!res.ok) throw new Error("Failed to fetch active semester");
+        const data = await res.json();
+
+        if (data.success) {
+          activeSemesterSelect.value = data.semesterType || "ALL";
+          activeSemesterInfo.innerText = "Currently Active: " + data.semesterType;
+        }
+      } catch (err) {
+        console.error("Error loading active semester:", err);
+        activeSemesterInfo.innerText = "Error loading active semester";
+      }
+    }
+
+    // In manage-subjects.html, update the saveActiveSemester function
+    async function saveActiveSemester(event) {
+      const activeSemesterSelect = document.getElementById("activeSemesterType");
+      const btn = event.target;
+      const originalText = btn.innerText;
+
+      btn.innerText = "Saving...";
+      btn.disabled = true;
+
+      try {
+        const res = await fetch("/admin/set-active-semester", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ semesterType: activeSemesterSelect.value })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          alert("Active semester saved!");
+          loadActiveSemester();
+
+          // Store in localStorage for other pages to use
+          localStorage.setItem('activeSemesterType', activeSemesterSelect.value);
+        } else {
+          alert("Failed to save semester: " + data.message);
+        }
+      } catch (err) {
+        console.error("Error saving active semester:", err);
+        alert("Error saving active semester. Please try again.");
+      } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    /* ================= SUBJECT CRUD ================= */
+
+    // Add new subject
+    async function addSubject() {
+      const semester = Number(document.getElementById("semester").value);
+      const name = document.getElementById("name").value.trim();
+      const code = document.getElementById("code").value.trim().toUpperCase();
+      const abbreviation = document.getElementById("abbreviation").value.trim().toUpperCase();
+      const credit = parseFloat(document.getElementById("credit").value);
+      const weeklyHours = parseFloat(document.getElementById("weeklyHours").value);
+      const type = document.getElementById("type").value;
+
+      // Validate inputs
+      if (!semester || semester < 1) {
+        alert("Please enter a valid semester (minimum 1)");
+        return;
+      }
+
+      if (!name) {
+        alert("Subject name is required");
+        return;
+      }
+
+      if (!code) {
+        alert("Subject code is required");
+        return;
+      }
+
+      if (!abbreviation) {
+        alert("Abbreviation is required");
+        return;
+      }
+
+      if (isNaN(credit) || credit < 0) {
+        alert("Credit must be 0 or greater");
+        return;
+      }
+
+      if (isNaN(weeklyHours) || weeklyHours < 0) {
+        alert("Weekly hours must be 0 or greater");
+        return;
+      }
+
+      if (!type) {
+        alert("Please select a subject type");
+        return;
+      }
+
+      const department = document.getElementById("department").value;
+      if (!department) {
+        alert("Please select a department");
+        return;
+      }
+
+      // Log what we're sending
+      const subjectData = {
+        semester,
+        name,
+        code,
+        abbreviation,
+        credit,
+        weeklyHours: weeklyHours,  // Send as weeklyHours
+        hours: weeklyHours,        // Also send as hours for backward compatibility
+        type,
+        department,
+        parallelGroupId: document.getElementById("parallelGroupId").value.trim()
+      };
+
+      console.log("Sending subject data:", subjectData);
+
+      try {
+        const res = await fetch("/api/subjects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(subjectData)
+        });
+
+        console.log("Response status:", res.status);
+        console.log("Response headers:", [...res.headers.entries()]);
+
+        const data = await res.json();
+        console.log("Server response:", data);
+
+        if (!res.ok) {
+          alert(`Failed to add subject (Status: ${res.status})\nMessage: ${data.message || 'Unknown error'}`);
+          return;
+        }
+
+        if (!data.success) {
+          alert(data.message || "Failed to add subject");
+          return;
+        }
+
+        // Clear inputs
+        document.getElementById("semester").value = "";
+        document.getElementById("name").value = "";
+        document.getElementById("code").value = "";
+        document.getElementById("abbreviation").value = "";
+        document.getElementById("credit").value = "";
+        document.getElementById("weeklyHours").value = "";
+        document.getElementById("type").value = "";
+        document.getElementById("department").value = "";
+        document.getElementById("parallelGroupId").value = "";
+
+        alert("Subject added successfully!");
+        renderSubjects();
+      } catch (err) {
+        console.error("Error adding subject:", err);
+        alert("Network or server error: " + err.message);
+      }
+    }
+
+    // Render subjects table
+    async function renderSubjects() {
+      console.log("renderSubjects called");
+
+      const tbody = document.getElementById("subjectTable");
+      if (!tbody) {
+        console.error("Cannot find subjectTable element");
+        return;
+      }
+
+      tbody.innerHTML = "<tr><td colspan='8' style='text-align:center; padding:20px;'>Loading subjects...</td></tr>";
+
+      try {
+        const res = await fetch("/api/subjects");
+        console.log("Response status:", res.status);
+
+        if (!res.ok) {
+          throw new Error(`Server error: ${res.status} ${res.statusText}`);
+        }
+
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          const text = await res.text();
+          console.error("Expected JSON but got:", text.substring(0, 200));
+          throw new Error("Server returned HTML instead of JSON");
+        }
+
+        const subjects = await res.json();
+        console.log("Subjects received:", subjects);
+
+        if (!Array.isArray(subjects)) {
+          console.error("Expected array but got:", typeof subjects);
+          tbody.innerHTML = "<tr><td colspan='8'>Error: Invalid data format received from server</td></tr>";
+          return;
+        }
+
+        if (subjects.length === 0) {
+          tbody.innerHTML = "<tr><td colspan='8'>No subjects found. Add your first subject above!</td></tr>";
+          return;
+        }
+
+        tbody.innerHTML = "";
+
+        subjects.forEach(sub => {
+          const weeklyHours = sub.weeklyHours || sub.hours || 0;
+          const credit = sub.credit || 0;
+
+          tbody.innerHTML += `
+        <tr>
+          <td>${sub.semester || ''}</td>
+          <td>${sub.name || ''}</td>
+          <td><strong>${sub.code || ''}</strong></td>
+          <td>${sub.abbreviation || ''}</td>
+          <td>${credit.toFixed(1)}</td>
+          <td>${weeklyHours.toFixed(1)}</td>
+           <td><span class="subject-badge" style="background:${sub.type === 'Theory' ? '#e8f4fd' : sub.type === 'Lab' ? '#e8f5e8' : '#f8e8fd'}; padding:4px 8px; border-radius:4px;">${sub.type || 'Theory'}</span></td>
+          <td><strong>${sub.department || '-'}</strong></td>
+          <td>${sub.parallelGroupId || '-'}</td>
+          <td>
+            <div class="action-buttons">
+              <button class="edit-btn" onclick="openEditModal('${sub._id}')">
+                <i class="fas fa-edit"></i> Edit
+              </button>
+              <button class="delete-btn" onclick="deleteSubject('${sub._id}')">
+                <i class="fas fa-trash-alt"></i> Delete
+              </button>
+            </div>
+          </td>
+        </tr>`;
+        });
+
+        console.log("Table rendered successfully");
+
+      } catch (err) {
+        console.error("Error in renderSubjects:", err);
+        tbody.innerHTML = `<tr><td colspan='9' style='color:#dc3545; text-align:center; padding:20px;'>Error loading subjects: ${err.message}</td></tr>`;
+      }
+    }
+
+    // Delete subject
+    async function deleteSubject(id) {
+      if (!confirm("Are you sure you want to delete this subject?")) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/subjects/${id}`, {
+          method: "DELETE"
+        });
+
+        if (!res.ok) {
+          const error = await res.text();
+          console.error("Delete failed:", error);
+          alert("Failed to delete subject");
+          return;
+        }
+
+        alert("Subject deleted successfully!");
+        renderSubjects();
+      } catch (err) {
+        console.error("Error deleting subject:", err);
+        alert("Error deleting subject: " + err.message);
+      }
+    }
+
+    /* ================= EDIT MODAL FUNCTIONS ================= */
+
+    // Open edit modal with subject data
+    async function openEditModal(id) {
+      try {
+        // Fetch subject data
+        const res = await fetch(`/api/subjects`);
+        const subjects = await res.json();
+        const subject = subjects.find(s => s._id === id);
+
+        if (!subject) {
+          alert("Subject not found");
+          return;
+        }
+
+        // Populate modal fields
+        document.getElementById("editSubjectId").value = subject._id;
+        document.getElementById("editSemester").value = subject.semester || '';
+        document.getElementById("editName").value = subject.name || '';
+        document.getElementById("editCode").value = subject.code || '';
+        document.getElementById("editAbbreviation").value = subject.abbreviation || '';
+        document.getElementById("editCredit").value = subject.credit || 0;
+        document.getElementById("editWeeklyHours").value = subject.weeklyHours || subject.hours || 0;
+        document.getElementById("editType").value = subject.type || 'Theory';
+        document.getElementById("editDepartment").value = subject.department || '';
+        document.getElementById("editParallelGroupId").value = subject.parallelGroupId || '';
+
+        // Show modal
+        document.getElementById("editModal").style.display = "flex";
+
+      } catch (err) {
+        console.error("Error opening edit modal:", err);
+        alert("Error loading subject data");
+      }
+    }
+
+    // Close edit modal
+    function closeEditModal() {
+      document.getElementById("editModal").style.display = "none";
+    }
+
+    // Update subject
+    async function updateSubject() {
+      const id = document.getElementById("editSubjectId").value;
+      const semester = Number(document.getElementById("editSemester").value);
+      const name = document.getElementById("editName").value.trim();
+      const code = document.getElementById("editCode").value.trim().toUpperCase();
+      const abbreviation = document.getElementById("editAbbreviation").value.trim().toUpperCase();
+      const credit = parseFloat(document.getElementById("editCredit").value);
+      const weeklyHours = parseFloat(document.getElementById("editWeeklyHours").value);
+      const type = document.getElementById("editType").value;
+      const department = document.getElementById("editDepartment").value;
+
+      // Validate inputs
+      if (!semester || semester < 1) {
+        alert("Please enter a valid semester (minimum 1)");
+        return;
+      }
+
+      if (!name) {
+        alert("Subject name is required");
+        return;
+      }
+
+      if (!code) {
+        alert("Subject code is required");
+        return;
+      }
+
+      if (!abbreviation) {
+        alert("Abbreviation is required");
+        return;
+      }
+
+      if (isNaN(credit) || credit < 0) {
+        alert("Credit must be 0 or greater");
+        return;
+      }
+
+      if (isNaN(weeklyHours) || weeklyHours < 0) {
+        alert("Weekly hours must be 0 or greater");
+        return;
+      }
+
+      if (!type) {
+        alert("Please select a subject type");
+        return;
+      }
+
+      try {
+        // Since there's no PUT endpoint, we'll use DELETE + POST
+        // First, check if code changed and if new code already exists
+        const subjectsRes = await fetch("/api/subjects");
+        const subjects = await subjectsRes.json();
+        const existingSubject = subjects.find(s => s.code === code && s._id !== id);
+
+        if (existingSubject) {
+          alert("Subject with this code already exists");
+          return;
+        }
+
+        // Delete the old subject
+        const deleteRes = await fetch(`/api/subjects/${id}`, {
+          method: "DELETE"
+        });
+
+        if (!deleteRes.ok) {
+          throw new Error("Failed to delete old subject");
+        }
+
+        // Add the updated subject
+        const addRes = await fetch("/api/subjects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            semester,
+            name,
+            code,
+            abbreviation,
+            credit,
+            weeklyHours,
+            type,
+            department,
+            parallelGroupId: document.getElementById("editParallelGroupId").value.trim()
+          })
+        });
+
+        const data = await addRes.json();
+
+        if (!addRes.ok) {
+          alert(data.message || "Failed to update subject");
+          return;
+        }
+
+        alert("Subject updated successfully!");
+        closeEditModal();
+        renderSubjects();
+
+      } catch (err) {
+        console.error("Error updating subject:", err);
+        alert("Error updating subject: " + err.message);
+      }
+    }
+
+    /* ================= DEADLINE FUNCTIONS ================= */
+
+    async function loadDeadline() {
+      const deadlineInput = document.getElementById("deadline");
+      const deadlineInfo = document.getElementById("deadlineInfo");
+
+      try {
+        const res = await fetch("/api/preference-deadline");
+
+        if (!res.ok) {
+          throw new Error(`Failed to fetch deadline: ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        if (!data.deadline) {
+          deadlineInput.value = "";
+          deadlineInfo.innerText = "No deadline set";
+          updateLockStatus(false);
+          return;
+        }
+
+        const deadlineDate = new Date(data.deadline);
+        deadlineInput.value = deadlineDate.toISOString().slice(0, 16);
+
+        updateLockStatus(data.locked);
+
+        deadlineInfo.innerText =
+          "Current deadline: " + deadlineDate.toLocaleString() +
+          (data.locked ? " (LOCKED - Faculties cannot modify preferences)" : " (UNLOCKED - Faculties can modify preferences)");
+      } catch (err) {
+        console.error("Error loading deadline:", err);
+        deadlineInfo.innerText = "Error loading deadline information";
+      }
+    }
+
+    function updateLockStatus(isLocked) {
+      const lockStatus = document.getElementById("lockStatus");
+      if (isLocked) {
+        lockStatus.textContent = "🔒 LOCKED";
+        lockStatus.className = "lock-status locked";
+      } else {
+        lockStatus.textContent = "🔓 UNLOCKED";
+        lockStatus.className = "lock-status unlocked";
+      }
+    }
+
+    async function saveDeadline() {
+      const deadlineInput = document.getElementById("deadline");
+      if (!deadlineInput.value) return alert("Select deadline");
+
+      const timestamp = deadlineInput.value;
+
+      try {
+        const res = await fetch("/admin/set-preference-deadline", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deadline: timestamp })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          alert("Deadline saved successfully!");
+          loadDeadline();
+        } else {
+          alert("Failed to save deadline: " + (data.message || "Unknown error"));
+        }
+      } catch (err) {
+        console.error("Error saving deadline:", err);
+        alert("Error saving deadline. Please try again.");
+      }
+    }
+
+    // Initialize
+    loadDeadline();
+    loadActiveSemester();
+    renderSubjects();
+  </script>
+
+</body>
+
+</html>

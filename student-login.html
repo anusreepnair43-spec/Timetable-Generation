@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Student Login</title>
+</head>
+<body>
+
+<h3>Login via Email</h3>
+
+<input type="email" id="email" placeholder="Enter your email" />
+<button onclick="sendLink()">Send Login Link</button>
+
+<script>
+function sendLink(){
+  fetch("/student/request-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email.value })
+  })
+  .then(res => res.json())
+  .then(data => alert(data.message));
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin - Sorted Faculty Preferences</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
+  font-family:'Poppins',sans-serif;
+}
+
+body{
+  height:100vh;
+  background:linear-gradient(135deg,#243b8f,#1b2f6b);
+}
+
+/* HEADER */
+.header, .top-header{
+  height:100px;
+  color:white;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:34px;
+  font-weight:700;
+  letter-spacing:0.5px;
+  position:relative;
+  background: rgba(255,255,255,0.1);
+  backdrop-filter: blur(5px);
+  border-bottom: 2px solid rgba(255,255,255,0.2);
+}
+
+/* LAYOUT */
+.container, .wrapper{
+  display:flex;
+  height:calc(100vh - 100px);
+  padding:35px;
+  gap:35px;
+}
+
+/* SIDEBAR - EXACTLY AS ORIGINAL - NO CHANGES */
+.sidebar{
+  width:260px;
+  background:#fff;
+  border-radius:16px;
+  box-shadow:0 15px 40px rgba(0,0,0,0.18);
+  display:flex;
+  flex-direction:column;
+  padding:25px 0;
+}
+
+.sidebar h2{
+  text-align:center;
+  margin-bottom:20px;
+  color:#243b8f;
+  font-size:24px;
+  font-weight:700;
+}
+
+.sidebar a{
+  padding:14px 26px;
+  cursor:pointer;
+  color:#333;
+  text-decoration:none;
+  transition: all 0.3s ease;
+  font-size:15px;
+  font-weight:500;
+}
+
+.sidebar a.active{
+  background:#243b8f;
+  color:white;
+  font-weight:600;
+}
+
+/* LOGOUT - EXACTLY AS ORIGINAL */
+.logout{
+  margin:20px;
+  margin-top:auto;
+  background:#e63946;
+  padding:12px;
+  text-align:center;
+  border-radius:12px;
+  cursor:pointer;
+  color:white;
+  font-weight:600;
+  font-size:15px;
+  letter-spacing:0.3px;
+}
+.logout:hover{
+  background:#c53030;
+}
+
+/* MAIN - ENHANCED FONTS ONLY */
+.main{
+  flex:1;
+  background:#fff;
+  border-radius:28px;
+  padding:40px;
+  overflow-y:auto;
+  box-shadow:0 20px 60px rgba(0,0,0,0.3);
+}
+
+h2{
+  color:#243b8f;
+  margin-bottom:25px;
+  font-size:32px;
+  font-weight:800;
+  border-bottom:4px solid #f0f4ff;
+  padding-bottom:18px;
+}
+
+h3{
+  color:#374151;
+  margin-bottom:20px;
+  font-size:26px;
+  font-weight:600;
+}
+
+/* TABLE CONTAINER FOR BETTER SCROLLING */
+.table-container {
+  overflow-x: auto;
+  margin-bottom: 45px;
+  border-radius: 20px;
+  border: 1px solid #e9edf2;
+  background: white;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+}
+
+/* TABLE */
+table{
+  width:100%;
+  border-collapse:collapse;
+  min-width: 900px;
+}
+
+th, td{
+  padding:20px 18px;
+  text-align:center;
+  font-size:17px;
+}
+
+th{
+  background:#243b8f;
+  color:white;
+  font-weight:700;
+  font-size:18px;
+  letter-spacing:0.5px;
+  white-space:nowrap;
+}
+
+td{
+  color:#1f2937;
+  font-size:17px;
+}
+
+tr:nth-child(even){ 
+  background:#f8fafd; 
+}
+
+tr:hover td{
+  background:#e8f0fe;
+  transition:background 0.2s;
+}
+
+tr.separator td {
+  background-color: #e5e7eb;
+  height: 3px;
+  padding: 0;
+}
+
+/* FACULTY NAME STYLE */
+.faculty-name-highlight {
+  font-weight: 700;
+  color: #243b8f;
+  font-size:18px;
+}
+
+/* SUBJECT STYLES */
+.subject-theory {
+  background: #e8f4fd;
+  color: #004085;
+  padding: 6px 14px;
+  border-radius: 30px;
+  font-size: 16px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.subject-lab {
+  background: #e8f5e8;
+  color: #155724;
+  padding: 6px 14px;
+  border-radius: 30px;
+  font-size: 16px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.priority-badge {
+  background: #243b8f;
+  color: white;
+  padding: 6px 16px;
+  border-radius: 40px;
+  font-size: 16px;
+  font-weight: 700;
+  display: inline-block;
+  min-width: 55px;
+}
+
+.empty-message {
+  text-align: center;
+  padding: 50px !important;
+  color: #6b7280;
+  font-size: 18px;
+  font-style: italic;
+  background: #f9fafb !important;
+}
+
+/* BUTTONS */
+button, .action-btn{
+  padding:14px 28px;
+  border:none;
+  border-radius:14px;
+  cursor:pointer;
+  font-size:17px;
+  font-weight:600;
+  transition:all 0.3s ease;
+}
+
+.approve, .action-btn{ 
+  background:#38b2ac;
+  color:white; 
+}
+.approve:hover {
+  background:#2c9a94;
+  transform:translateY(-2px);
+  box-shadow:0 8px 20px rgba(56,178,172,0.4);
+}
+
+.lock{ 
+  background:#dc2626;
+  color:white; 
+}
+.lock:hover {
+  background:#b91c1c;
+  transform:translateY(-2px);
+}
+
+.unlock{ 
+  background:#16a34a;
+  color:white; 
+}
+.unlock:hover {
+  background:#15803d;
+  transform:translateY(-2px);
+}
+
+.refresh-btn {
+  background: rgba(255,255,255,0.2);
+  color: white;
+  border: 2px solid rgba(255,255,255,0.6);
+  padding: 12px 26px;
+  border-radius: 50px;
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 600;
+  position: absolute;
+  right: 30px;
+  top: 25px;
+  backdrop-filter: blur(5px);
+  transition: all 0.3s ease;
+}
+
+.refresh-btn:hover {
+  background: white;
+  color: #243b8f;
+  border-color: white;
+  transform:scale(1.05);
+}
+
+/* STATS CARDS FOR SUMMARY */
+.stats-cards {
+  display: flex;
+  gap: 25px;
+  margin-bottom: 35px;
+  flex-wrap: wrap;
+}
+
+.stat-card {
+  background: #f8fafd;
+  border-radius: 20px;
+  padding: 25px 30px;
+  flex: 1;
+  min-width: 220px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+}
+
+.stat-card .stat-label {
+  font-size: 16px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 10px;
+  font-weight:600;
+}
+
+.stat-card .stat-value {
+  font-size: 48px;
+  font-weight: 800;
+  color: #243b8f;
+  line-height: 1.2;
+}
+
+.stat-card .stat-desc {
+  font-size: 16px;
+  color: #4b5563;
+  margin-top: 8px;
+  font-weight:500;
+}
+
+/* DESIGNATION BADGE */
+.designation-badge {
+  background: #e5e7eb;
+  color: #374151;
+  padding: 6px 14px;
+  border-radius: 40px;
+  font-size: 16px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* EXPERIENCE TAG */
+.experience-tag {
+  background: #f3f4f6;
+  color: #4b5563;
+  padding: 6px 14px;
+  border-radius: 30px;
+  font-size: 16px;
+  font-weight:500;
+}
+
+/* RESPONSIVE */
+@media (max-width: 1200px) {
+  .container {
+    flex-direction: column;
+  }
+  
+  .sidebar {
+    width: 100%;
+  }
+  
+  .stats-cards {
+    flex-direction: column;
+  }
+  
+  th, td {
+    padding: 15px 10px;
+    font-size: 16px;
+  }
+  
+  th {
+    font-size: 16px;
+  }
+  
+  h2 {
+    font-size: 28px;
+  }
+  
+  .stat-card .stat-value {
+    font-size: 36px;
+  }
+}
+</style>
+
+</head>
+<body>
+
+<div class="header" id="mainHeader">
+  Detailed Faculty Preferences
+</div>
+
+<div class="container">
+  <!-- SIDEBAR - COMPLETELY UNCHANGED -->
+  <div class="sidebar">
+    <h2>Admin</h2>
+
+    <!-- Links for internal sections (only dashboard) -->
+    <a href="admin.html?section=pending" class="sidebar-link">Pending Faculty</a>
+    <a href="admin.html?section=approved" class="sidebar-link">Approved Faculty</a>
+    <a href="admin.html?section=upload" class="sidebar-link">Upload Students</a>
+    <a href="manage-subjects.html" class="sidebar-link">Manage Subjects</a>
+    <a href="admin-preferences.html" class="sidebar-link">Faculty Preferences</a>
+    <a href="sorted-preferences.html" class="sidebar-link active">Detailed Faculty Preferences</a>
+    <a href="admin-workload.html" class="sidebar-link">Manage Workload</a>
+    <a href="timetable_rules.html" class="sidebar-link">Timetable Rules</a>
+    <a href="admin.html#facultyPrefs" class="sidebar-link">Time Preferences</a>
+
+    <div style="flex:1"></div>
+    <div class="logout" onclick="logoutAdmin()">Logout</div>
+  </div>
+
+  <div class="main">
+    <div id="sortedPrefs">
+      <!-- Stats will be inserted here by JavaScript -->
+      <div id="statsContainer" class="stats-cards"></div>
+      
+      <h2>Submitted Final Preferences</h2>
+      <div class="table-container">
+        <table id="submittedTable">
+          <thead>
+            <tr>
+              <th>Designation</th>
+              <th>Experience</th>
+              <th>Faculty Name</th>
+              <th>Faculty ID</th>
+              <th>Subject</th>
+              <th>Priority</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h2>Not Submitted Final Preferences</h2>
+      <div class="table-container">
+        <table id="notSubmittedTable">
+          <thead>
+            <tr>
+              <th>Designation</th>
+              <th>Experience</th>
+              <th>Faculty Name</th>
+              <th>Faculty ID</th>
+              <th>Subject</th>
+              <th>Priority</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Highlight the current page in sidebar
+document.addEventListener('DOMContentLoaded', function() {
+  const currentPage = window.location.pathname.split('/').pop();
+  const sidebarLinks = document.querySelectorAll('.sidebar-link');
+  
+  sidebarLinks.forEach(link => {
+    // Remove existing active class
+    link.classList.remove('active');
+    
+    // Check if this link points to the current page
+    const linkHref = link.getAttribute('href');
+    if (linkHref === currentPage) {
+      link.classList.add('active');
+    }
+    
+    // For links with query parameters, check if they match
+    if (linkHref.includes('?') && linkHref.split('?')[0] === currentPage) {
+      link.classList.add('active');
+    }
+  });
+  
+  // Special case: if we're on admin.html, check for section parameter
+  if (currentPage === 'admin.html') {
+    const urlParams = new URLSearchParams(window.location.search);
+    const section = urlParams.get('section');
+    
+    sidebarLinks.forEach(link => {
+      if (link.getAttribute('href') === `admin.html?section=${section}`) {
+        link.classList.add('active');
+      }
+    });
+  }
+  
+  // Load preferences
+  loadSortedPreferences();
+});
+
+function logoutAdmin(){
+  localStorage.clear();
+  alert("Logged out successfully!");
+  location.href = "index.html";
+}
+
+async function loadSortedPreferences(){
+  try{
+    console.log("Loading sorted preferences...");
+    
+    // Show loading state
+    const submittedTbody = document.querySelector("#submittedTable tbody");
+    const notSubmittedTbody = document.querySelector("#notSubmittedTable tbody");
+    const statsContainer = document.getElementById("statsContainer");
+
+    submittedTbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="empty-message">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+            <div style="font-size:28px;">⏳</div>
+            <div style="font-size:18px;">Loading preferences...</div>
+          </div>
+        </td>
+      </tr>
+    `;
+    
+    notSubmittedTbody.innerHTML = '';
+    
+    const res = await fetch("/admin/sorted-preferences");
+    const data = await res.json();
+
+    console.log("Response data:", data);
+    
+    if (!data.success) {
+      console.error("API returned error:", data);
+      throw new Error(data.error || "Unknown error");
+    }
+
+    submittedTbody.innerHTML = "";
+    notSubmittedTbody.innerHTML = "";
+
+    // Calculate statistics
+    const submittedCount = data.submitted?.length || 0;
+    const notSubmittedCount = data.notSubmitted?.length || 0;
+
+    // Display statistics cards
+    statsContainer.innerHTML = `
+      <div class="stat-card">
+        <div class="stat-label">Submitted</div>
+        <div class="stat-value">${submittedCount}</div>
+        <div class="stat-desc">faculties</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pending</div>
+        <div class="stat-value">${notSubmittedCount}</div>
+        <div class="stat-desc">faculties</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total</div>
+        <div class="stat-value">${submittedCount + notSubmittedCount}</div>
+        <div class="stat-desc">faculties</div>
+      </div>
+    `;
+
+    // SUBMITTED PREFERENCES
+    if (data.submitted && data.submitted.length > 0) {
+      console.log("Processing submitted preferences:", data.submitted.length);
+      
+      data.submitted.forEach((faculty, facultyIndex) => {
+        console.log(`Faculty ${facultyIndex + 1}:`, faculty.name, faculty.designation);
+        
+        let hasAnyPreference = false;
+        
+        // THEORY PREFERENCES
+        if (faculty.theoryPreferences && faculty.theoryPreferences.length > 0) {
+          faculty.theoryPreferences.forEach((pref, prefIndex) => {
+            const tr = document.createElement("tr");
+            hasAnyPreference = true;
+            
+            // Use abbreviation if available, otherwise use code
+            const subjectDisplay = pref.abbreviation || pref.code || "N/A";
+            
+            tr.innerHTML = `
+              <td>${prefIndex === 0 ? `<span class="designation-badge">${faculty.designation || "N/A"}</span>` : ""}</td>
+              <td>${prefIndex === 0 ? `<span class="experience-tag">${faculty.experience || "0"} years</span>` : ""}</td>
+              <td>${prefIndex === 0 ? `<span class="faculty-name-highlight">${faculty.name || "N/A"}</span>` : ""}</td>
+              <td>${prefIndex === 0 ? faculty.username || "N/A" : ""}</td>
+              <td><span class="subject-theory">${subjectDisplay} (Theory)</span></td>
+              <td><span class="priority-badge">#${pref.priority || "N/A"}</span></td>
+            `;
+            submittedTbody.appendChild(tr);
+          });
+        }
+        
+        // LAB PREFERENCES
+        if (faculty.labPreferences && faculty.labPreferences.length > 0) {
+          faculty.labPreferences.forEach((pref, prefIndex) => {
+            const tr = document.createElement("tr");
+            hasAnyPreference = true;
+            
+            // Use abbreviation if available, otherwise use code
+            const subjectDisplay = pref.abbreviation || pref.code || "N/A";
+            
+            tr.innerHTML = `
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td><span class="subject-lab">${subjectDisplay} (Lab)</span></td>
+              <td><span class="priority-badge">#${pref.priority || "N/A"}</span></td>
+            `;
+            submittedTbody.appendChild(tr);
+          });
+        }
+        
+        // If faculty has no preferences at all
+        if (!hasAnyPreference) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td><span class="designation-badge">${faculty.designation || "N/A"}</span></td>
+            <td><span class="experience-tag">${faculty.experience || "0"} years</span></td>
+            <td><span class="faculty-name-highlight">${faculty.name || "N/A"}</span></td>
+            <td>${faculty.username || "N/A"}</td>
+            <td colspan="2" style="color:#6b7280; font-style:italic;">No preferences submitted</td>
+          `;
+          submittedTbody.appendChild(tr);
+        }
+        
+        // Add a separator row between faculties (except for the last one)
+        if (facultyIndex < data.submitted.length - 1) {
+          const separator = document.createElement("tr");
+          separator.className = 'separator';
+          separator.innerHTML = `<td colspan="6" style="padding:0;"></td>`;
+          submittedTbody.appendChild(separator);
+        }
+      });
+      
+    } else {
+      // No submitted preferences
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td colspan="6" class="empty-message">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:15px;">
+            <div style="font-size:56px; color:#9ca3af;">📭</div>
+            <div style="font-size:22px; font-weight:700; color:#4b5563;">No Preferences Submitted</div>
+            <div style="font-size:18px; color:#6b7280;">No faculty have submitted final preferences yet.</div>
+          </div>
+        </td>
+      `;
+      submittedTbody.appendChild(tr);
+    }
+
+    // NOT SUBMITTED FACULTIES
+    if (data.notSubmitted && data.notSubmitted.length > 0) {
+      console.log("Processing not submitted faculties:", data.notSubmitted.length);
+      
+      data.notSubmitted.forEach((faculty, index) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><span class="designation-badge">${faculty.designation || "N/A"}</span></td>
+          <td><span class="experience-tag">${faculty.experience || "0"} years</span></td>
+          <td><span class="faculty-name-highlight">${faculty.name || "N/A"}</span></td>
+          <td>${faculty.username || "N/A"}</td>
+          <td style="color:#9ca3af; font-size:16px;">—</td>
+          <td style="color:#9ca3af; font-size:16px;">—</td>
+        `;
+        notSubmittedTbody.appendChild(tr);
+        
+        // Add separator between faculties (except last)
+        if (index < data.notSubmitted.length - 1) {
+          const separator = document.createElement("tr");
+          separator.className = 'separator';
+          separator.innerHTML = `<td colspan="6" style="padding:0;"></td>`;
+          notSubmittedTbody.appendChild(separator);
+        }
+      });
+    } else {
+      // All faculty have submitted
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td colspan="6" class="empty-message">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:15px;">
+            <div style="font-size:56px; color:#10b981;">🎉</div>
+            <div style="font-size:22px; font-weight:700; color:#065f46;">All Done!</div>
+            <div style="font-size:18px; color:#6b7280;">All approved faculty have submitted their preferences.</div>
+          </div>
+        </td>
+      `;
+      notSubmittedTbody.appendChild(tr);
+    }
+
+    console.log("Preferences loaded successfully");
+    
+  } catch(err){
+    console.error("Error loading sorted preferences:", err);
+    
+    // Show error in tables
+    const submittedTbody = document.querySelector("#submittedTable tbody");
+    const notSubmittedTbody = document.querySelector("#notSubmittedTable tbody");
+    
+    submittedTbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align: center; padding: 50px; color: #dc3545;">
+          <div style="font-size: 56px; margin-bottom: 20px;">⚠️</div>
+          <div style="font-size: 22px; font-weight: 700;">Error Loading Data</div>
+          <div style="margin-top: 15px; font-size: 18px; color: #6b7280;">${err.message}</div>
+          <button onclick="loadSortedPreferences()" style="margin-top: 25px; background: #243b8f; color: white; border: none; padding: 14px 35px; border-radius: 12px; font-size: 17px; font-weight:600; cursor: pointer;">
+            Retry
+          </button>
+        </td>
+      </tr>
+    `;
+    
+    notSubmittedTbody.innerHTML = '';
+  }
+}
+</script>
+
+</body>
+</html>

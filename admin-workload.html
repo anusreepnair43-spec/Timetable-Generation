@@ -1,0 +1,2933 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Workload Management</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #243b8f, #1b2f6b);
+        }
+
+        .topbar {
+            height: 70px;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            font-weight: 600;
+        }
+
+        .container {
+            display: flex;
+            padding: 30px;
+            gap: 30px;
+        }
+
+        .sidebar {
+            width: 260px;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+            display: flex;
+            flex-direction: column;
+            padding: 25px 0;
+        }
+
+        .sidebar h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #243b8f;
+            font-size: 22px;
+        }
+
+        .sidebar a {
+            padding: 14px 26px;
+            cursor: pointer;
+            color: #333;
+            text-decoration: none;
+            display: block;
+            font-size: 15px;
+        }
+
+        .sidebar a.active {
+            background: #243b8f;
+            color: white;
+        }
+
+        .logout {
+            margin: 20px;
+            background: #e63946;
+            padding: 12px;
+            text-align: center;
+            border-radius: 12px;
+            cursor: pointer;
+            color: white;
+            font-size: 15px;
+        }
+
+        .logout:hover {
+            background: #c53030;
+        }
+
+        .content {
+            flex: 1;
+            background: #fff;
+            border-radius: 20px;
+            padding: 30px;
+            overflow-y: auto;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+        }
+
+        .card {
+            margin-bottom: 30px;
+            background: #fff;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            color: #243b8f;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+            font-size: 24px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+            font-size: 14px;
+        }
+
+        th {
+            background: #243b8f;
+            color: white;
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        input[type=number] {
+            width: 80px;
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        button {
+            background: #243b8f;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #1b2f6b;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        button.secondary {
+            background: #28a745;
+        }
+
+        button.secondary:hover {
+            background: #218838;
+        }
+
+        button.danger {
+            background: #dc3545;
+        }
+
+        button.danger:hover {
+            background: #c53030;
+        }
+
+        button.info {
+            background: #17a2b8;
+        }
+
+        button.info:hover {
+            background: #138496;
+        }
+
+        .status-overloaded {
+            background-color: #f8d7da !important;
+            color: #721c24;
+            font-weight: bold;
+        }
+
+        .status-underloaded {
+            background-color: #fff3cd !important;
+            color: #856404;
+            font-weight: bold;
+        }
+
+        .status-full {
+            background-color: #d1c4e9 !important;
+            color: #311b92;
+            font-weight: bold;
+        }
+
+        .requirements-met {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .requirements-not-met {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #243b8f;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .lab-sharing-info {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e8f4fd;
+            border-radius: 8px;
+            border-left: 5px solid #243b8f;
+        }
+
+        .subject-theory {
+            background-color: #e8f4fd;
+            color: #004085;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .subject-lab {
+            background-color: #e8f5e8;
+            color: #155724;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .subject-project {
+            background-color: #f8e8fd;
+            color: #581b98;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .faculty-name {
+            font-weight: bold;
+            color: #243b8f;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-style: italic;
+            font-size: 16px;
+        }
+
+        .summary-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #243b8f;
+            font-size: 14px;
+        }
+
+        .controls {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+
+        .success-message {
+            background: #d1e7dd;
+            color: #0f5132;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            display: none;
+            font-size: 14px;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            display: none;
+            font-size: 14px;
+        }
+
+        #unallocatedTable th {
+            background: #dc3545;
+            color: white;
+        }
+
+        #unallocatedTable tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .results-container {
+            max-height: 500px;
+            overflow-y: auto;
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .faculty-grid,
+        .subjects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .faculty-item,
+        .subject-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        .faculty-header,
+        .subject-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .designation,
+        .subject-type {
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            background: #e2e8f0;
+        }
+
+        .subject-type.theory {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .subject-type.lab {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .subject-type.project {
+            background: #feebc8;
+            color: #744210;
+        }
+
+        .progress-container {
+            position: relative;
+            height: 24px;
+            background: #e2e8f0;
+            border-radius: 12px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4c51bf, #667eea);
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            font-weight: bold;
+            color: #2d3748;
+        }
+
+        .subject-info {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+
+        .status-overload {
+            color: #e53e3e;
+            font-weight: bold;
+        }
+
+        .status-underload {
+            color: #d69e2e;
+            font-weight: bold;
+        }
+
+        .status-balanced {
+            color: #38a169;
+            font-weight: bold;
+        }
+
+        .subject-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .subject-tag {
+            background: #e2e8f0;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        .subject-details {
+            margin-top: 10px;
+        }
+
+        .subject-details p {
+            margin: 5px 0;
+            color: #4a5568;
+            font-size: 14px;
+        }
+
+        .subject-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #718096;
+        }
+
+        .no-data,
+        .success-message {
+            text-align: center;
+            padding: 20px;
+            color: #718096;
+            font-style: italic;
+        }
+
+        .success-message {
+            color: #38a169;
+        }
+
+        .summary-stats {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .stat-value {
+            display: block;
+            font-size: 24px;
+            font-weight: bold;
+            color: #4c51bf;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .unallocated-warning {
+            background: linear-gradient(to right, #f8d7da, #f8f9fa) !important;
+            border-left: 4px solid #dc3545 !important;
+            font-weight: bold !important;
+        }
+
+        .semester-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #6c757d;
+            color: white;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .subject-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            margin: 3px;
+            background: #e9ecef;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: default;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .subject-chip:hover {
+            background: #dee2e6;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+        }
+
+        .subject-chip.lab {
+            background: #d1e7dd;
+            color: #0f5132;
+            border: 1px solid #badbcc;
+        }
+
+        .subject-chip.theory {
+            background: #cfe2ff;
+            color: #052c65;
+            border: 1px solid #9ec5fe;
+        }
+
+        .subject-chip.project {
+            background: #e2d9f3;
+            color: #311b92;
+            border: 1px solid #c4b5e2;
+        }
+
+        .subject-chip .remove-btn {
+            margin-left: 8px;
+            color: #dc3545;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            width: 20px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .subject-chip .remove-btn:hover {
+            background: #dc3545;
+            color: white;
+        }
+
+        .assign-btn {
+            transition: all 0.2s;
+        }
+
+        .assign-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .severity-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .severity-critical {
+            background-color: #dc3545;
+        }
+
+        .severity-high {
+            background-color: #fd7e14;
+        }
+
+        .severity-moderate {
+            background-color: #ffc107;
+        }
+
+        .severity-mild {
+            background-color: #17a2b8;
+        }
+
+        .print-btn {
+            background: #17a2b8;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+
+        .print-btn:hover {
+            background: #138496;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .seniority-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #243b8f;
+            color: white;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+
+        /* Enhanced Edit Mode Styles */
+        .edit-controls-bar {
+            background: linear-gradient(90deg, #f0f8ff, #e6f0fa);
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            border: 1px solid #d0e0f0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .edit-controls-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .edit-controls-right {
+            display: flex;
+            gap: 10px;
+        }
+
+        .edit-badge {
+            background: #243b8f;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .edit-badge.warning {
+            background: #ffc107;
+            color: #856404;
+        }
+
+        .pending-changes-badge {
+            background: #ffc107;
+            color: #856404;
+            padding: 6px 15px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .edit-table-container {
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
+        }
+
+        .edit-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .edit-table th {
+            background: #f8fafc;
+            color: #1e293b;
+            font-weight: 600;
+            padding: 16px 12px;
+            text-align: left;
+            border-bottom: 2px solid #e2e8f0;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .edit-table td {
+            padding: 16px 12px;
+            border-bottom: 1px solid #e5e7eb;
+            vertical-align: top;
+        }
+
+        .edit-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .faculty-info-cell {
+            min-width: 200px;
+        }
+
+        .faculty-name-large {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+
+        .faculty-designation {
+            font-size: 13px;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+
+        .faculty-status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .status-badge-overloaded {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .status-badge-near {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-badge-underloaded {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .status-badge-full {
+            background: #d1c4e9;
+            color: #311b92;
+        }
+
+        .status-badge-balanced {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .hours-cell {
+            min-width: 120px;
+        }
+
+        .hours-display {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .hours-progress {
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0 4px;
+        }
+
+        .hours-progress-bar {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .hours-progress-bar.overloaded {
+            background: #dc2626;
+        }
+
+        .hours-progress-bar.near {
+            background: #f59e0b;
+        }
+
+        .hours-progress-bar.underloaded {
+            background: #0ea5e9;
+        }
+
+        .hours-progress-bar.full {
+            background: #8b5cf6;
+        }
+
+        .hours-progress-bar.balanced {
+            background: #10b981;
+        }
+
+        .hours-percentage {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .subjects-cell {
+            background: #f9fafc;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .subjects-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+            min-height: 40px;
+        }
+
+        .add-subject-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .add-subject-btn:hover {
+            background: #218838;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+        }
+
+        .stats-panel {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-top: 25px;
+        }
+
+        .stat-card-compact {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e5e7eb;
+            text-align: center;
+        }
+
+        .stat-card-compact .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 4px;
+        }
+
+        .stat-card-compact .stat-label {
+            font-size: 13px;
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .stat-card-compact.valid .stat-value {
+            color: #10b981;
+        }
+
+        .stat-card-compact.near .stat-value {
+            color: #f59e0b;
+        }
+
+        .stat-card-compact.over .stat-value {
+            color: #dc2626;
+        }
+
+        .stat-card-compact.changes .stat-value {
+            color: #3b82f6;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(3px);
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            width: 600px;
+            max-width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease;
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8fafc;
+            border-radius: 20px 20px 0 0;
+        }
+
+        .modal-header h3 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #64748b;
+            padding: 0;
+            margin: 0;
+        }
+
+        .modal-body {
+            padding: 25px;
+        }
+
+        .modal-footer {
+            padding: 20px 25px;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        .faculty-status-card {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            border-left: 5px solid #243b8f;
+        }
+
+        .subject-select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+
+        .subject-select:focus {
+            border-color: #3b82f6;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .subject-preview {
+            background: #f0f7ff;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .btn-cancel {
+            background: #6c757d;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .btn-add {
+            background: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-add.active {
+            opacity: 1;
+            cursor: pointer;
+        }
+
+        .btn-add.active:hover {
+            background: #218838;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .edit-controls-bar {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .edit-controls-right {
+                width: 100%;
+                justify-content: flex-end;
+            }
+
+            .stats-panel {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .edit-table td {
+                padding: 12px 8px;
+            }
+
+            .faculty-name-large {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <div class="topbar">
+        Admin Dashboard - Workload Management
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <h2>Admin</h2>
+            <a href="admin.html?section=pending" class="sidebar-link">Pending Faculty</a>
+            <a href="admin.html?section=approved" class="sidebar-link">Approved Faculty</a>
+            <a href="admin.html?section=upload" class="sidebar-link">Upload Students</a>
+            <a href="manage-subjects.html" class="sidebar-link">Manage Subjects</a>
+            <a href="admin-preferences.html" class="sidebar-link">Faculty Preferences</a>
+            <a href="sorted-preferences.html" class="sidebar-link">Detailed Faculty Preferences</a>
+            <a href="admin-workload.html" class="sidebar-link active">Manage Workload</a>
+            <a href="timetable_rules.html" class="sidebar-link">Timetable Rules</a>
+            <a href="admin.html#facultyPrefs" class="sidebar-link">Time Preferences</a>
+            <div style="flex:1"></div>
+            <div class="logout" onclick="logoutAdmin()">Logout</div>
+        </div>
+
+        <div class="content">
+            <div class="card">
+                <h2>Workload Configuration</h2>
+                <p style="margin-bottom: 15px; color: #666; font-size: 14px;">
+                    Configure maximum hours and minimum subject requirements for each designation.
+                </p>
+
+                <div class="summary-box">
+                    <strong>Status:</strong><br>
+                    <span style="color: #721c24;">Overloaded</span> |
+                    <span style="color: #856404;">Underloaded</span> |
+                    <span style="color: #311b92;">Full</span>
+                </div>
+
+                <div class="summary-box" style="margin-top: 20px;">
+                    <h3 style="margin-bottom: 10px; color: #243b8f; font-size: 16px;">Global Allocation Limits</h3>
+                    <p style="margin-bottom: 10px; color: #666; font-size: 13px;">Specify the maximum number of
+                        faculties that can be assigned to a single subject of each type globally during the
+                        auto-allocation phase. Example: Lab requires 2 faculties.</p>
+                    <table style="width: 100%; margin-bottom: 0;">
+                        <tr>
+                            <th>Theory</th>
+                            <th>Lab</th>
+                            <th>Project</th>
+                        </tr>
+                        <tr>
+                            <td><input type="number" id="globalTheoryCount" min="1" max="10" value="1"></td>
+                            <td><input type="number" id="globalLabCount" min="1" max="10" value="2"></td>
+                            <td><input type="number" id="globalProjectCount" min="1" max="10" value="3"></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <h3 style="margin-top: 30px; margin-bottom: 15px; color: #243b8f; font-size: 20px;">Designation Limits
+                </h3>
+                <table>
+                    <tr>
+                        <th>Designation</th>
+                        <th>Max Weekly Hours</th>
+                        <th>Min Theory Subjects</th>
+                        <th>Min Lab/Project Subjects</th>
+                    </tr>
+                    <tr>
+                        <td>Professor</td>
+                        <td><input type="number" id="professorHours" min="1" max="40" value="16"></td>
+                        <td><input type="number" id="professorTheory" min="0" max="10" value="2"></td>
+                        <td><input type="number" id="professorLab" min="0" max="10" value="1"></td>
+                    </tr>
+                    <tr>
+                        <td>Associate Professor</td>
+                        <td><input type="number" id="assocProfessorHours" min="1" max="40" value="16"></td>
+                        <td><input type="number" id="assocProfessorTheory" min="0" max="10" value="2"></td>
+                        <td><input type="number" id="assocProfessorLab" min="0" max="10" value="1"></td>
+                    </tr>
+                    <tr>
+                        <td>Assistant Professor</td>
+                        <td><input type="number" id="assistantProfessorHours" min="1" max="40" value="16"></td>
+                        <td><input type="number" id="assistantProfessorTheory" min="0" max="10" value="2"></td>
+                        <td><input type="number" id="assistantProfessorLab" min="0" max="10" value="1"></td>
+                    </tr>
+                </table>
+
+                <div class="controls">
+                    <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label for="allocationAcademicYear"
+                                style="font-size: 14px; font-weight: 500; color: #475569;">Year:</label>
+                            <input type="text" id="allocationAcademicYear" placeholder="e.g. 2025-2026"
+                                style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; width: 130px;">
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label for="allocationTerm"
+                                style="font-size: 14px; font-weight: 500; color: #475569;">Term:</label>
+                            <select id="allocationTerm"
+                                style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+                                <option value="Odd">Odd</option>
+                                <option value="Even">Even</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label for="allocationSemester"
+                                style="font-size: 14px; font-weight: 500; color: #475569;">Semester:</label>
+                            <select id="allocationSemester"
+                                style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+                                <option value="ALL">All Semesters</option>
+                                <option value="ODD">Odd (1,3,5,7)</option>
+                                <option value="EVEN">Even (2,4,6,8)</option>
+                                <option value="1">Sem 1</option>
+                                <option value="2">Sem 2</option>
+                                <option value="3">Sem 3</option>
+                                <option value="4">Sem 4</option>
+                                <option value="5">Sem 5</option>
+                                <option value="6">Sem 6</option>
+                                <option value="7">Sem 7</option>
+                                <option value="8">Sem 8</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label for="allocationDept"
+                                style="font-size: 14px; font-weight: 500; color: #475569;">Dept:</label>
+                            <select id="allocationDept"
+                                style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+                                <option value="ALL">All Departments</option>
+                                <option value="CSE">CSE</option>
+                                <option value="IT">IT</option>
+                                <option value="ECE">ECE</option>
+                                <option value="EEE">EEE</option>
+                                <option value="ME">ME</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button id="saveLimits">Save Workload Configuration</button>
+                    <button onclick="triggerStrictAllocation()" id="strictAllocateBtn" class="secondary">Run
+                        Allocation</button>
+                    <button onclick="loadAllocations()" class="info">Refresh Allocations</button>
+                    <button onclick="clearAllocations()" class="danger">Clear All Allocations</button>
+                    <button onclick="loadUnderloadedFaculty()" class="info" style="background: #ffc107;">Show
+                        Underloaded Faculty</button>
+                    <button onclick="enableQuickEditMode()" class="secondary">✏️ Quick Edit</button>
+                </div>
+
+                <div id="successMessage" class="success-message"></div>
+                <div id="errorMessage" class="error-message"></div>
+            </div>
+
+            <!-- Allocation Results Card - Initially Hidden -->
+            <div class="card" id="allocationCard" style="display:none;">
+                <h2>Allocation Results</h2>
+
+                <div id="allocationSummary" class="summary-box"></div>
+
+                <div style="overflow-x: auto;">
+                    <table id="allocationTable">
+                        <thead>
+                            <tr>
+                                <th>Faculty Name</th>
+                                <th>Designation</th>
+                                <th>Experience</th>
+                                <th>Seniority</th>
+                                <th>Subject Code</th>
+                                <th>Subject Name</th>
+                                <th>Type</th>
+                                <th>Semester</th>
+                                <th>Hours</th>
+                                <th>Total Hours</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="allocationTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Quick Edit Card - Initially Hidden -->
+            <div class="card" id="editAllocationCard" style="display:none;">
+                <h2>✏️ Quick Edit Allocations</h2>
+
+                <div class="edit-controls-bar">
+                    <div class="edit-controls-left">
+                        <span class="edit-badge">
+                            <span>🖱️ Drag subjects or use buttons</span>
+                        </span>
+                        <span class="pending-changes-badge" id="pendingChangesCount">
+                            No changes
+                        </span>
+                    </div>
+                    <div class="edit-controls-right">
+                        <button onclick="saveEditedAllocations()" class="secondary" style="margin:0; padding:8px 20px;">
+                            💾 Save Changes
+                        </button>
+                        <button onclick="cancelEdit()" class="danger" style="margin:0; padding:8px 20px;">
+                            ❌ Cancel
+                        </button>
+                    </div>
+                </div>
+
+                <div class="edit-table-container">
+                    <table class="edit-table">
+                        <thead>
+                            <tr>
+                                <th>Faculty</th>
+                                <th>Hours</th>
+                                <th>Subjects</th>
+                            </tr>
+                        </thead>
+                        <tbody id="editTableBody">
+                            <!-- Will be populated -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="stats-panel">
+                    <div class="stat-card-compact valid">
+                        <div class="stat-value" id="validCount">0</div>
+                        <div class="stat-label">✅ OK</div>
+                    </div>
+                    <div class="stat-card-compact near">
+                        <div class="stat-value" id="nearLimitCount">0</div>
+                        <div class="stat-label">⚠️ Near Limit</div>
+                    </div>
+                    <div class="stat-card-compact over">
+                        <div class="stat-value" id="overloadedCount">0</div>
+                        <div class="stat-label">❌ Overloaded</div>
+                    </div>
+                    <div class="stat-card-compact changes">
+                        <div class="stat-value" id="totalChangesCount">0</div>
+                        <div class="stat-label">📋 Pending</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Underloaded Faculty Card - Initially Hidden -->
+            <div class="card" id="underloadedCard" style="display:none;">
+                <h2>Underloaded Faculty Details
+                    <button onclick="printUnderloadedDetails()" style="float:right; font-size:14px;"
+                        class="print-btn">Print Report</button>
+                </h2>
+
+                <div class="summary-box" id="underloadedSummary"></div>
+
+                <div style="overflow-x: auto;">
+                    <table id="underloadedTable">
+                        <thead>
+                            <tr>
+                                <th>Faculty Name</th>
+                                <th>Designation</th>
+                                <th>Experience</th>
+                                <th>Seniority</th>
+                                <th>Current Hours</th>
+                                <th>Max Hours</th>
+                                <th>Load %</th>
+                                <th>Subjects Count</th>
+                                <th>Subjects Allocated</th>
+                                <th>Severity</th>
+                            </tr>
+                        </thead>
+                        <tbody id="underloadedTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Unallocated Subjects Card - Initially Hidden -->
+            <div class="card" id="unallocatedCard" style="display:none;">
+                <h2>Unallocated Subjects</h2>
+                <div class="summary-box" id="unallocatedSummary"></div>
+                <table id="unallocatedTable">
+                    <thead>
+                        <tr>
+                            <th>Subject Code</th>
+                            <th>Subject Name</th>
+                            <th>Type</th>
+                            <th>Weekly Hours</th>
+                            <th>Semester</th>
+                            <th>Credit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="unallocatedTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize all DOM elements
+        const professorHours = document.getElementById("professorHours");
+        const professorTheory = document.getElementById("professorTheory");
+        const professorLab = document.getElementById("professorLab");
+
+        const assocProfessorHours = document.getElementById("assocProfessorHours");
+        const assocProfessorTheory = document.getElementById("assocProfessorTheory");
+        const assocProfessorLab = document.getElementById("assocProfessorLab");
+
+        const assistantProfessorHours = document.getElementById("assistantProfessorHours");
+        const assistantProfessorTheory = document.getElementById("assistantProfessorTheory");
+        const assistantProfessorLab = document.getElementById("assistantProfessorLab");
+
+        const loadingOverlay = document.getElementById("loadingOverlay");
+        const successMessage = document.getElementById("successMessage");
+        const errorMessage = document.getElementById("errorMessage");
+
+        // Initialize table bodies
+        const allocationTableBody = document.getElementById("allocationTableBody");
+        const allocationSummary = document.getElementById("allocationSummary");
+        const unallocatedTableBody = document.getElementById("unallocatedTableBody");
+        const unallocatedSummary = document.getElementById("unallocatedSummary");
+        const underloadedTableBody = document.getElementById("underloadedTableBody");
+        const underloadedSummary = document.getElementById("underloadedSummary");
+        const editTableBody = document.getElementById("editTableBody");
+
+        // ========== EDIT MODE VARIABLES ==========
+        let facultyAllocationsEdit = {};
+        let pendingEditChanges = [];
+
+        // Subject name cache - store all subject names here
+        let subjectNameCache = {};
+
+        // Initialize on page load
+        document.addEventListener("DOMContentLoaded", async () => {
+            const savedYear = localStorage.getItem("workloadYear");
+            const savedTerm = localStorage.getItem("workloadTerm");
+            const savedSemester = localStorage.getItem("workloadSemester");
+
+            const yearInput = document.getElementById("allocationAcademicYear");
+            const termSelect = document.getElementById("allocationTerm");
+            const semesterSelect = document.getElementById("allocationSemester");
+
+            if (yearInput) {
+                const currentYear = new Date().getFullYear();
+                yearInput.value = savedYear || `${currentYear}-${currentYear + 1}`;
+
+                const saveYear = () => {
+                    localStorage.setItem("workloadYear", yearInput.value);
+                };
+                yearInput.addEventListener("input", saveYear);
+                yearInput.addEventListener("change", saveYear);
+            }
+            if (savedTerm && termSelect) termSelect.value = savedTerm;
+            if (savedSemester && semesterSelect) semesterSelect.value = savedSemester;
+
+            await loadWorkload();
+            await fetchSubjectNames();
+
+            // Auto-load existing allocations
+            await loadAllocations();
+
+            // Add change listeners
+            if (termSelect) {
+                termSelect.addEventListener("change", async () => {
+                    localStorage.setItem("workloadTerm", termSelect.value);
+                    await loadAllocations();
+                });
+            }
+            if (semesterSelect) {
+                semesterSelect.addEventListener("change", async () => {
+                    localStorage.setItem("workloadSemester", semesterSelect.value);
+                    await loadAllocations();
+                });
+            }
+        });
+
+        function showLoading(show) {
+            if (loadingOverlay) {
+                loadingOverlay.style.display = show ? "flex" : "none";
+            }
+        }
+
+        function showSuccess(msg) {
+            if (successMessage) {
+                successMessage.innerHTML = msg;
+                successMessage.style.display = "block";
+                errorMessage.style.display = "none";
+                setTimeout(() => {
+                    successMessage.style.display = "none";
+                }, 5000);
+            }
+        }
+
+        function showError(msg) {
+            if (errorMessage) {
+                errorMessage.innerHTML = msg;
+                errorMessage.style.display = "block";
+                successMessage.style.display = "none";
+                setTimeout(() => {
+                    errorMessage.style.display = "none";
+                }, 5000);
+            }
+        }
+
+        function logoutAdmin() {
+            localStorage.clear();
+            alert("Logged out successfully!");
+            location.href = "index.html";
+        }
+
+        // Save workload configuration
+        document.querySelector("#saveLimits").addEventListener("click", async () => {
+            try {
+                const errors = validateHourLimits();
+                if (errors.length > 0) {
+                    alert("Please fix these errors:\n\n" + errors.join("\n"));
+                    return;
+                }
+
+                const payload = {
+                    config: {
+                        "Professor": {
+                            weeklyHours: Number(professorHours.value),
+                            minTheory: Number(professorTheory.value),
+                            minLab: Number(professorLab.value)
+                        },
+                        "Associate Professor": {
+                            weeklyHours: Number(assocProfessorHours.value),
+                            minTheory: Number(assocProfessorTheory.value),
+                            minLab: Number(assocProfessorLab.value)
+                        },
+                        "Assistant Professor": {
+                            weeklyHours: Number(assistantProfessorHours.value),
+                            minTheory: Number(assistantProfessorTheory.value),
+                            minLab: Number(assistantProfessorLab.value)
+                        }
+                    }
+                };
+
+                const globalSettingsPayload = {
+                    theoryFacultyCount: Number(document.getElementById('globalTheoryCount').value) || 1,
+                    labFacultyCount: Number(document.getElementById('globalLabCount').value) || 2,
+                    projectFacultyCount: Number(document.getElementById('globalProjectCount').value) || 3
+                };
+
+                showLoading(true);
+                const res = await fetch("/admin/save-workload-config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const globalRes = await fetch("/admin/save-global-faculty-counts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(globalSettingsPayload)
+                });
+
+                const data = await res.json();
+                const globalData = await globalRes.json();
+
+                if (data.success && globalData.success) {
+                    showSuccess("Workload configuration and Global Allocation limits saved successfully!");
+                    await loadWorkload();
+                } else {
+                    showError("Failed to save: " + (data.message || globalData.message || "Unknown error"));
+                }
+            } catch (err) {
+                console.error("Save error:", err);
+                showError("Server error while saving");
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        async function loadWorkload() {
+            try {
+                showLoading(true);
+                const res = await fetch("/admin/get-workload-config");
+                const data = await res.json();
+
+                if (data.success && data.config) {
+                    let configObj = data.config;
+
+                    if (configObj["Professor"]) {
+                        professorHours.value = configObj["Professor"].weeklyHours || 12;
+                        professorTheory.value = configObj["Professor"].minTheory || 2;
+                        professorLab.value = configObj["Professor"].minLab || 1;
+                    }
+
+                    if (configObj["Associate Professor"]) {
+                        assocProfessorHours.value = configObj["Associate Professor"].weeklyHours || 14;
+                        assocProfessorTheory.value = configObj["Associate Professor"].minTheory || 2;
+                        assocProfessorLab.value = configObj["Associate Professor"].minLab || 1;
+                    }
+
+                    if (configObj["Assistant Professor"]) {
+                        assistantProfessorHours.value = configObj["Assistant Professor"].weeklyHours || 16;
+                        assistantProfessorTheory.value = configObj["Assistant Professor"].minTheory || 2;
+                        assistantProfessorLab.value = configObj["Assistant Professor"].minLab || 1;
+                    }
+                }
+
+                const globalRes = await fetch("/admin/global-faculty-counts");
+                const globalData = await globalRes.json();
+
+                if (globalData.success && globalData.counts) {
+                    document.getElementById('globalTheoryCount').value = globalData.counts.theoryFacultyCount || 1;
+                    document.getElementById('globalLabCount').value = globalData.counts.labFacultyCount || 2;
+                    document.getElementById('globalProjectCount').value = globalData.counts.projectFacultyCount || 3;
+                }
+            } catch (err) {
+                console.error("Failed to load workload config:", err);
+                showError("Using default configuration");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // UPDATED: triggerStrictAllocation - Shows allocation results only after clicking
+        async function triggerStrictAllocation() {
+            try {
+                const validationErrors = validateHourLimits();
+                if (validationErrors.length > 0) {
+                    alert("Please fix configuration errors:\n\n" + validationErrors.join("\n"));
+                    return;
+                }
+
+                const confirmMessage = `STRICT SENIORITY-BASED ALLOCATION\n\nThis will create new allocations and overwrite any existing allocations.\n\nContinue?`;
+
+                if (!confirm(confirmMessage)) return;
+
+                showLoading(true);
+
+                const res = await fetch("/admin/strict-allocate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        targetSemester: document.getElementById('allocationSemester')?.value || 'ALL',
+                        academicYear: document.getElementById('allocationAcademicYear')?.value,
+                        term: document.getElementById('allocationTerm')?.value,
+                        department: document.getElementById('allocationDept')?.value || 'ALL'
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    // Hide any other cards that might be visible
+                    document.getElementById("editAllocationCard").style.display = "none";
+                    document.getElementById("underloadedCard").style.display = "none";
+
+                    // Fetch subject names before displaying results
+                    await fetchSubjectNames();
+
+                    // Display the allocation results (this will show the card)
+                    displayAllocationResults(data);
+
+                    // Show success message briefly
+                    showSuccess("Allocation completed successfully!");
+
+                    // Scroll to the allocation results
+                    setTimeout(() => {
+                        document.getElementById("allocationCard").scrollIntoView({
+                            behavior: 'smooth'
+                        });
+                    }, 100);
+                } else {
+                    // If allocation failed, show error but don't display anything
+                    showError("Allocation failed: " + (data.message || data.error || "Unknown error"));
+
+                    // Hide allocation card if there's an error
+                    document.getElementById("allocationCard").style.display = "none";
+                }
+            } catch (err) {
+                console.error("Allocation error:", err);
+                showError("Server error during allocation: " + err.message);
+
+                // Hide allocation card on error
+                document.getElementById("allocationCard").style.display = "none";
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function validateHourLimits() {
+            const errors = [];
+
+            const profHours = parseInt(professorHours.value) || 0;
+            const assocHours = parseInt(assocProfessorHours.value) || 0;
+            const asstHours = parseInt(assistantProfessorHours.value) || 0;
+
+            if (!professorHours.value.trim()) errors.push("Professor hours are required");
+            if (!assocProfessorHours.value.trim()) errors.push("Associate Professor hours are required");
+            if (!assistantProfessorHours.value.trim()) errors.push("Assistant Professor hours are required");
+
+            if (profHours < 1 || profHours > 25) {
+                errors.push("Professor hours should be between 1-25 hours per week");
+            }
+            if (assocHours < 1 || assocHours > 25) {
+                errors.push("Associate Professor hours should be between 1-25 hours per week");
+            }
+            if (asstHours < 1 || asstHours > 25) {
+                errors.push("Assistant Professor hours should be between 1-25 hours per week");
+            }
+
+            return errors;
+        }
+
+        // ========== FETCH SUBJECT NAMES FROM DATABASE ==========
+        async function fetchSubjectNames() {
+            try {
+                showLoading(true);
+                const res = await fetch("/api/subjects");
+
+                if (!res.ok) {
+                    console.error("Failed to fetch subjects:", res.status);
+                    return;
+                }
+
+                const contentType = res.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    console.error("Expected JSON but got:", contentType);
+                    return;
+                }
+
+                const data = await res.json();
+
+                if (Array.isArray(data)) {
+                    subjectNameCache = {};
+                    data.forEach(subject => {
+                        if (subject.code) {
+                            subjectNameCache[subject.code] = subject; // Store entire object
+                        }
+                    });
+                    console.log(`✅ Loaded ${Object.keys(subjectNameCache).length} subject names from database`);
+                } else {
+                    console.error("Invalid subject data format:", data);
+                }
+            } catch (err) {
+                console.error("Error fetching subject names:", err);
+                subjectNameCache = {};
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // ========== GET SUBJECT NAME FROM CACHE ONLY ==========
+        function getSubjectName(code) {
+            if (!code) return code || 'N/A';
+
+            if (subjectNameCache[code]) {
+                return subjectNameCache[code].name || code;
+            }
+
+            return code;
+        }
+
+        // UPDATED: displayAllocationResults - Shows allocation results card
+        function displayAllocationResults(data) {
+            const allocationCard = document.getElementById("allocationCard");
+            const unallocatedCard = document.getElementById("unallocatedCard");
+
+            // Clear previous content
+            if (allocationTableBody) allocationTableBody.innerHTML = "";
+            if (unallocatedTableBody) unallocatedTableBody.innerHTML = "";
+
+            // Hide unallocated card initially
+            if (unallocatedCard) unallocatedCard.style.display = "none";
+
+            // Check if we have valid allocation data
+            if (!data || !data.success) {
+                if (allocationCard) allocationCard.style.display = "none";
+                return;
+            }
+
+            // Show allocation card
+            if (allocationCard) allocationCard.style.display = "block";
+
+            // Display summary if available
+            if (data.summary && allocationSummary) {
+                let summaryHTML = `<strong>ALLOCATION SUMMARY</strong><br><br>`;
+
+                summaryHTML += `
+                    <strong>Total Faculties:</strong> ${data.summary.totalFaculties || 0}<br>
+                    <strong>Total Subjects:</strong> ${data.summary.totalSubjects || 0}<br>
+                    
+                    <strong>Allocated Subjects:</strong> ${data.summary.totalAllocations || 0}/${data.summary.totalSubjects || 0}<br>
+                `;
+
+                if (data.summary.unallocatedSubjects > 0) {
+                    summaryHTML += `<strong style="color: #dc3545;">Unallocated Subjects:</strong> <span style="color: #dc3545;">${data.summary.unallocatedSubjects}</span><br>`;
+
+                    // Show unallocated card only if there are unallocated subjects
+                    if (unallocatedCard) unallocatedCard.style.display = "block";
+                }
+
+                if (data.summary.underloadedFaculties > 0) {
+                    summaryHTML += `<strong style="color: #ffc107;">Underloaded Faculties:</strong> <span style="color: #ffc107;">${data.summary.underloadedFaculties}</span><br>`;
+                }
+
+                allocationSummary.innerHTML = summaryHTML;
+            }
+
+            // Display unallocated subjects if they exist
+            if (data.unallocatedSubjects && data.unallocatedSubjects.length > 0 && unallocatedTableBody) {
+                let totalUnallocatedHours = 0;
+                let byTypeCount = { theory: 0, lab: 0, project: 0 };
+
+                data.unallocatedSubjects.forEach(subject => {
+                    const row = document.createElement("tr");
+
+                    const type = subject.type || "Theory";
+                    const typeLower = type.toLowerCase();
+                    const typeClass = `subject-${typeLower}`;
+
+                    if (typeLower.includes("lab")) byTypeCount.lab++;
+                    else if (typeLower.includes("project")) byTypeCount.project++;
+                    else byTypeCount.theory++;
+
+                    totalUnallocatedHours += subject.weeklyHours || 0;
+
+                    const subjectName = getSubjectName(subject.code);
+
+                    row.innerHTML = `
+                        <td><strong>${subject.code || 'N/A'}</strong></td>
+                        <td>${subjectName}</td>
+                        <td><span class="${typeClass}">${type}</span></td>
+                        <td><strong>${subject.weeklyHours || 0}h</strong></td>
+                        <td><span class="semester-badge">Sem ${subject.semester || 'N/A'}</span></td>
+                        <td>${subject.credit || 0}</td>
+                    `;
+                    unallocatedTableBody.appendChild(row);
+                });
+
+                if (unallocatedSummary) {
+                    unallocatedSummary.innerHTML = `
+                        <strong>UNALLOCATED SUBJECTS SUMMARY</strong><br><br>
+                        <strong>Total:</strong> ${data.unallocatedSubjects.length} subjects<br>
+                        <strong>Total Hours:</strong> ${totalUnallocatedHours}h<br>
+                        <strong>By Type:</strong> Theory: ${byTypeCount.theory}, Lab: ${byTypeCount.lab}, Project: ${byTypeCount.project}
+                    `;
+                }
+            } else if (unallocatedCard && unallocatedSummary && unallocatedTableBody) {
+                unallocatedCard.style.display = "none";
+            }
+
+            // Display faculty allocations
+            if (data.facultyResults && data.facultyResults.length > 0 && allocationTableBody) {
+                const sortedFaculty = [...data.facultyResults].sort((a, b) => {
+                    return (a.seniorityRank || 99) - (b.seniorityRank || 99);
+                });
+
+                sortedFaculty.forEach((faculty, facultyIndex) => {
+                    const theoryMatch = faculty.theory ? faculty.theory.match(/(\d+)\/(\d+)/) : null;
+                    const labMatch = faculty.lab ? faculty.lab.match(/(\d+)\/(\d+)/) : null;
+
+                    const theoryCount = theoryMatch ? parseInt(theoryMatch[1]) : 0;
+                    const theoryRequired = theoryMatch ? parseInt(theoryMatch[2]) : 0;
+                    const labCount = labMatch ? parseInt(labMatch[1]) : 0;
+                    const labRequired = labMatch ? parseInt(labMatch[2]) : 0;
+
+                    const requirementsMet = faculty.requirementsMet === true ||
+                        (theoryCount >= theoryRequired && labCount >= labRequired);
+
+                    const maxHours = faculty.maxHours || getDefaultMaxHours(faculty.designation);
+                    const usedHours = faculty.usedHours || 0;
+
+                    // Determine status based on hours
+                    let status = faculty.status || "Balanced";
+                    let statusClass = "";
+
+                    if (usedHours > maxHours) {
+                        status = "Overloaded";
+                        statusClass = "status-overloaded";
+                    } else if (usedHours === maxHours) {
+                        status = "Full";
+                        statusClass = "status-full";
+                    } else if (usedHours < maxHours) {
+                        status = "Underloaded";
+                        statusClass = "status-underloaded";
+                    }
+
+                    const reqStatus = requirementsMet ?
+                        '<span class="requirements-met">MET</span>' :
+                        '<span class="requirements-not-met">NOT MET</span>';
+
+                    const theorySubjects = faculty.theorySubjects || [];
+                    const labSubjects = faculty.labSubjects || [];
+                    const allSubjects = [...theorySubjects, ...labSubjects];
+
+                    if (allSubjects.length === 0) {
+                        const row = document.createElement("tr");
+                        row.innerHTML = `
+                            <td class="faculty-name">${faculty.faculty}</td>
+                            <td>${faculty.designation}</td>
+                            <td>${faculty.experience} years</td>
+                            <td><span class="seniority-badge">${faculty.seniorityRank || 'N/A'}</span></td>
+                            <td colspan="4"><em style="color: #666;">No subjects allocated</em></td>
+                            <td>0</td>
+                            <td>${usedHours}/${maxHours}</td>
+                            <td class="${statusClass}">${status}</td>
+                        `;
+                        allocationTableBody.appendChild(row);
+                        return; // return from forEach loop for this specific faculty
+                    }
+
+                    allSubjects.forEach((subjectStr, index) => {
+                        const isFirstRow = index === 0;
+                        const row = document.createElement("tr");
+
+                        const match = subjectStr.match(/([A-Z0-9]+)\s*\((\d+)h\)/);
+                        const subjectCode = match ? match[1] : subjectStr;
+                        const subjectHours = match ? parseInt(match[2]) : 0;
+
+                        let subjectType = "Theory";
+                        let typeClass = "subject-theory";
+
+                        if (subjectCode.includes('L') || subjectStr.toLowerCase().includes('lab')) {
+                            subjectType = "Lab";
+                            typeClass = "subject-lab";
+                        } else if (subjectCode.includes('D') || subjectStr.toLowerCase().includes('project')) {
+                            subjectType = "Project";
+                            typeClass = "subject-project";
+                        }
+
+                        const subjectName = getSubjectName(subjectCode);
+                        const subjectObj = subjectNameCache[subjectCode] || {};
+                        const _semester = subjectObj.semester || 'N/A';
+
+                        row.innerHTML = `
+                            <td>${isFirstRow ? `<span class="faculty-name">${faculty.faculty}</span>` : ''}</td>
+                            <td>${isFirstRow ? faculty.designation : ''}</td>
+                            <td>${isFirstRow ? faculty.experience + ' years' : ''}</td>
+                            <td>${isFirstRow ? `<span class="seniority-badge">${faculty.seniorityRank || 'N/A'}</span>` : ''}</td>
+                            <td><strong>${subjectCode}</strong></td>
+                            <td>${subjectName}</td>
+                            <td><span class="${typeClass}">${subjectType}</span></td>
+                            <td>${_semester}</td>
+                            <td><strong>${subjectHours}</strong></td>
+                            <td>${isFirstRow ? `${usedHours}/${maxHours}` : ''}</td>
+                            <td class="${statusClass}">${isFirstRow ? status : ''}</td>
+                        `;
+                        allocationTableBody.appendChild(row);
+                    });
+                });
+            } else {
+                // If no faculty results, show empty state but keep card visible
+                if (allocationTableBody) {
+                    allocationTableBody.innerHTML = `<tr><td colspan="11" class="empty-state">No allocations were created. Check configuration and try again.</td></tr>`;
+                }
+            }
+        }
+
+        function getDefaultMaxHours(designation) {
+            const defaultHours = {
+                "Professor": 12,
+                "Associate Professor": 14,
+                "Assistant Professor": 16
+            };
+            return defaultHours[designation] || 16;
+        }
+
+        async function loadAllocations() {
+            try {
+                showLoading(true);
+
+                const res = await fetch("/admin/strict-allocate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        viewOnly: true,
+                        targetSemester: document.getElementById('allocationSemester')?.value || 'ALL',
+                        academicYear: document.getElementById('allocationAcademicYear')?.value,
+                        term: document.getElementById('allocationTerm')?.value,
+                        department: document.getElementById('allocationDept')?.value || 'ALL'
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success && data.facultyResults && data.facultyResults.length > 0) {
+                    await fetchSubjectNames();
+                    displayAllocationResults(data);
+                    // showSuccess("Allocations loaded successfully!"); // Too intrusive for auto-load
+                } else {
+                    // Hide result cards if no data
+                    document.getElementById("allocationCard").style.display = "none";
+                    document.getElementById("unallocatedCard").style.display = "none";
+                    document.getElementById("underloadedCard").style.display = "none";
+
+                    // Show message if manually triggered or if we want to be explicit
+                    console.log("No allocations found for this semester.");
+                }
+            } catch (err) {
+                console.error("Load allocations error:", err);
+                showError("Error loading allocations from database");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function clearAllocations() {
+            if (!confirm("WARNING: This will delete ALL allocation records from the database. This action cannot be undone!\n\nAre you sure you want to continue?")) {
+                return;
+            }
+
+            try {
+                showLoading(true);
+                const res = await fetch("/admin/clear-allocations", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    showSuccess("All allocations cleared successfully!");
+                    document.getElementById("allocationCard").style.display = "none";
+                    document.getElementById("unallocatedCard").style.display = "none";
+                    document.getElementById("underloadedCard").style.display = "none";
+                    document.getElementById("editAllocationCard").style.display = "none";
+                } else {
+                    showError("Failed to clear allocations: " + (data.message || "Unknown error"));
+                }
+            } catch (err) {
+                console.error("Clear allocations error:", err);
+                showError("Server error while clearing allocations");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadUnderloadedFaculty() {
+            try {
+                showLoading(true);
+
+                const res = await fetch("/admin/strict-allocate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ 
+                        viewOnly: true, 
+                        targetSemester: document.getElementById('allocationSemester')?.value || 'ALL',
+                        academicYear: document.getElementById('allocationAcademicYear')?.value,
+                        term: document.getElementById('allocationTerm')?.value,
+                        department: document.getElementById('allocationDept')?.value || 'ALL'
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success && data.facultyResults && data.facultyResults.length > 0 && underloadedTableBody && underloadedSummary) {
+                    // Filter for underloaded faculty (usedHours < maxHours)
+                    const underloadedFaculty = data.facultyResults.filter(f => {
+                        const maxHours = f.maxHours || getDefaultMaxHours(f.designation);
+                        const usedHours = f.usedHours || 0;
+                        return usedHours < maxHours;
+                    });
+
+                    if (underloadedFaculty.length === 0) {
+                        showError("No underloaded faculty found.");
+                        document.getElementById("underloadedCard").style.display = "none";
+                        return;
+                    }
+
+                    await fetchSubjectNames();
+                    displayUnderloadedFacultyTable(underloadedFaculty);
+
+                    document.getElementById("allocationCard").style.display = "none";
+                    document.getElementById("unallocatedCard").style.display = "none";
+                    document.getElementById("underloadedCard").style.display = "block";
+
+                    setTimeout(() => {
+                        document.getElementById("underloadedCard").scrollIntoView({
+                            behavior: 'smooth'
+                        });
+                    }, 100);
+
+                    showSuccess(`Found ${underloadedFaculty.length} underloaded faculty members`);
+
+                } else {
+                    showError("No allocations found. Run allocation first.");
+                }
+            } catch (err) {
+                console.error("Load underloaded error:", err);
+                showError("Error loading underloaded faculty data");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function displayUnderloadedFacultyTable(facultyList) {
+            if (!underloadedTableBody || !underloadedSummary) return;
+
+            underloadedTableBody.innerHTML = "";
+
+            facultyList.sort((a, b) => {
+                const loadPercentA = Math.round((a.usedHours / (a.maxHours || getDefaultMaxHours(a.designation))) * 100);
+                const loadPercentB = Math.round((b.usedHours / (b.maxHours || getDefaultMaxHours(b.designation))) * 100);
+                return loadPercentA - loadPercentB;
+            });
+
+            const totalHoursAllocated = facultyList.reduce((sum, f) => sum + (f.usedHours || 0), 0);
+            const totalMaxHours = facultyList.reduce((sum, f) => sum + (f.maxHours || getDefaultMaxHours(f.designation)), 0);
+            const avgLoadPercent = facultyList.length > 0 ?
+                Math.round(facultyList.reduce((sum, f) => {
+                    const loadPercent = Math.round((f.usedHours / (f.maxHours || getDefaultMaxHours(f.designation))) * 100);
+                    return sum + loadPercent;
+                }, 0) / facultyList.length) : 0;
+            const availableCapacity = facultyList.reduce((sum, f) => sum + ((f.maxHours || getDefaultMaxHours(f.designation)) - f.usedHours), 0);
+
+            underloadedSummary.innerHTML = `
+                <strong>UNDERLOADED FACULTY SUMMARY</strong><br><br>
+                <strong>Total Underloaded Faculty:</strong> ${facultyList.length}<br>
+                <strong>Average Load Percentage:</strong> ${avgLoadPercent}%<br>
+                <strong>Total Hours Allocated:</strong> ${totalHoursAllocated}/${totalMaxHours}<br>
+                <strong>Available Capacity:</strong> ${availableCapacity} hours<br>
+                <br>
+            `;
+
+            for (const faculty of facultyList) {
+                const row = document.createElement("tr");
+
+                const maxHours = faculty.maxHours || getDefaultMaxHours(faculty.designation);
+                const usedHours = faculty.usedHours || 0;
+                const loadPercent = Math.round((usedHours / maxHours) * 100);
+
+                let severity = "mild";
+                let severityClass = "severity-mild";
+                let severityText = "Mild";
+
+                if (loadPercent < 25) {
+                    severity = "critical";
+                    severityClass = "severity-critical";
+                    severityText = "Critical";
+                } else if (loadPercent < 50) {
+                    severity = "high";
+                    severityClass = "severity-high";
+                    severityText = "High";
+                }
+
+                const theorySubjects = faculty.theorySubjects || [];
+                const labSubjects = faculty.labSubjects || [];
+                const allSubjects = [...theorySubjects, ...labSubjects];
+
+                const subjectElements = allSubjects.map(subjectStr => {
+                    const match = subjectStr.match(/([A-Z0-9]+)/);
+                    const subjectCode = match ? match[1] : subjectStr;
+                    const type = subjectCode.includes('L') ? 'lab' : subjectCode.includes('D') ? 'project' : 'theory';
+                    const subjectName = getSubjectName(subjectCode);
+                    return `<span class="subject-${type}" title="${subjectName}">${subjectCode}</span>`;
+                });
+
+                const subjectsList = subjectElements.join(', ') || 'No subjects';
+
+                row.innerHTML = `
+                    <td><strong class="faculty-name">${faculty.faculty}</strong></td>
+                    <td>${faculty.designation}</td>
+                    <td>${faculty.experience} years</td>
+                    <td><span class="seniority-badge">${faculty.seniorityRank || 'N/A'}</span></td>
+                    <td><strong>${usedHours}</strong></td>
+                    <td>${maxHours}</td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="${severityClass} severity-indicator"></span>
+                            <strong>${loadPercent}%</strong>
+                        </div>
+                    </td>
+                    <td>${allSubjects.length}</td>
+                    <td style="max-width: 200px;">${subjectsList}</td>
+                    <td><span class="${severityClass} severity-indicator"></span> ${severityText}</td>
+                `;
+
+                underloadedTableBody.appendChild(row);
+            }
+        }
+
+        function printUnderloadedDetails() {
+            const printWindow = window.open('', '_blank');
+
+            const tableClone = document.getElementById("underloadedTable").cloneNode(true);
+            const summaryClone = document.getElementById("underloadedSummary").cloneNode(true);
+
+            printWindow.document.write(`
+                <html>
+                    <head>
+                        <title>Underloaded Faculty Report</title>
+                        <style>
+                            body { 
+                                font-family: Arial, sans-serif; 
+                                padding: 20px; 
+                                background: white;
+                            }
+                            h1 { 
+                                color: #243b8f; 
+                                border-bottom: 2px solid #243b8f;
+                                padding-bottom: 10px;
+                                margin-bottom: 20px;
+                            }
+                            table { 
+                                width: 100%; 
+                                border-collapse: collapse; 
+                                margin: 20px 0; 
+                            }
+                            th, td { 
+                                border: 1px solid #ddd; 
+                                padding: 10px; 
+                                text-align: left; 
+                            }
+                            th { 
+                                background-color: #243b8f; 
+                                color: white; 
+                            }
+                            .summary-box {
+                                background: #f8f9fa;
+                                padding: 15px;
+                                border-radius: 8px;
+                                margin-bottom: 20px;
+                                border-left: 4px solid #ffc107;
+                            }
+                            .severity-indicator {
+                                display: inline-block;
+                                width: 12px;
+                                height: 12px;
+                                border-radius: 50%;
+                                margin-right: 5px;
+                            }
+                            .severity-critical { background-color: #dc3545; }
+                            .severity-high { background-color: #fd7e14; }
+                            .severity-moderate { background-color: #ffc107; }
+                            .severity-mild { background-color: #17a2b8; }
+                            .print-date {
+                                color: #666;
+                                font-size: 14px;
+                                margin-bottom: 20px;
+                            }
+                            .seniority-badge {
+                                display: inline-block;
+                                padding: 2px 8px;
+                                background: #243b8f;
+                                color: white;
+                                border-radius: 12px;
+                                font-size: 11px;
+                                font-weight: bold;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Underloaded Faculty Report</h1>
+                        <div class="print-date">Generated on: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</div>
+                        <div class="summary-box">${summaryClone.innerHTML}</div>
+                        ${tableClone.outerHTML}
+                    </body>
+                </html>
+            `);
+            printWindow.document.close();
+            printWindow.print();
+        }
+
+        // ========== EDIT MODE FUNCTIONS ==========
+
+        async function enableQuickEditMode() {
+            try {
+                showLoading(true);
+
+                const res = await fetch("/admin/strict-allocate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ 
+                        viewOnly: true, 
+                        targetSemester: document.getElementById('allocationSemester')?.value || 'ALL',
+                        department: document.getElementById('allocationDept')?.value || 'ALL'
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!data.success) {
+                    showError("No allocations found");
+                    return;
+                }
+
+                await fetchSubjectNames();
+
+                const configRes = await fetch("/admin/get-workload-config");
+                const config = await configRes.json();
+
+                const maxHours = {
+                    "Professor": config.config?.["Professor"]?.weeklyHours || 12,
+                    "Associate Professor": config.config?.["Associate Professor"]?.weeklyHours || 14,
+                    "Assistant Professor": config.config?.["Assistant Professor"]?.weeklyHours || 16
+                };
+
+                facultyAllocationsEdit = {};
+                pendingEditChanges = [];
+
+                if (data.facultyResults && data.facultyResults.length > 0) {
+                    data.facultyResults.forEach(f => {
+                        const allSubjects = [];
+                        const theorySubjects = f.theorySubjects || [];
+                        const labSubjects = f.labSubjects || [];
+
+                        theorySubjects.forEach(subjectStr => {
+                            const match = subjectStr.match(/([A-Z0-9]+)\s*\((\d+)h\)/);
+                            if (match) {
+                                allSubjects.push({
+                                    subjectCode: match[1],
+                                    weeklyHours: parseInt(match[2]) || 0,
+                                    type: "theory"
+                                });
+                            }
+                        });
+
+                        labSubjects.forEach(subjectStr => {
+                            const match = subjectStr.match(/([A-Z0-9]+)\s*\((\d+)h\)/);
+                            if (match) {
+                                allSubjects.push({
+                                    subjectCode: match[1],
+                                    weeklyHours: parseInt(match[2]) || 0,
+                                    type: "lab"
+                                });
+                            }
+                        });
+
+                        const totalHours = allSubjects.reduce((sum, s) => sum + (s.weeklyHours || 0), 0);
+
+                        facultyAllocationsEdit[f.faculty] = {
+                            name: f.faculty,
+                            designation: f.designation,
+                            subjects: allSubjects,
+                            maxHours: maxHours[f.designation] || 16,
+                            currentHours: totalHours
+                        };
+                    });
+                }
+
+                document.getElementById("allocationCard").style.display = "none";
+                document.getElementById("underloadedCard").style.display = "none";
+                document.getElementById("unallocatedCard").style.display = "none";
+                document.getElementById("editAllocationCard").style.display = "block";
+
+                populateEditTable();
+
+                showSuccess("Quick edit enabled");
+
+            } catch (err) {
+                console.error("Edit mode error:", err);
+                showError("Failed to enable edit");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function populateEditTable() {
+            if (!editTableBody) return;
+
+            editTableBody.innerHTML = "";
+
+            let valid = 0, near = 0, over = 0;
+
+            Object.keys(facultyAllocationsEdit).forEach(facultyName => {
+                const f = facultyAllocationsEdit[facultyName];
+                const percentage = (f.currentHours / f.maxHours) * 100;
+                const isOverloaded = f.currentHours > f.maxHours;
+                const isFull = f.currentHours === f.maxHours;
+                const isUnderloaded = f.currentHours < f.maxHours;
+
+                if (isOverloaded) {
+                    over++;
+                } else if (isFull) {
+                    valid++;
+                } else if (isUnderloaded) {
+                    valid++;
+                }
+
+                // Determine status based on hours only
+                let statusClass = "status-badge-balanced";
+                let statusText = "Balanced";
+                let progressBarClass = "balanced";
+                let hoursColor = "#10b981";
+
+                if (isOverloaded) {
+                    statusClass = "status-badge-overloaded";
+                    statusText = "Overloaded";
+                    progressBarClass = "overloaded";
+                    hoursColor = "#dc2626";
+                } else if (isFull) {
+                    statusClass = "status-badge-full";
+                    statusText = "Full";
+                    progressBarClass = "full";
+                    hoursColor = "#8b5cf6";
+                } else if (isUnderloaded) {
+                    statusClass = "status-badge-underloaded";
+                    statusText = "Underloaded";
+                    progressBarClass = "underloaded";
+                    hoursColor = "#0ea5e9";
+                }
+
+                const row = document.createElement("tr");
+
+                row.innerHTML = `
+                    <td class="faculty-info-cell">
+                        <div class="faculty-name-large">${f.name}</div>
+                        <div class="faculty-designation">${f.designation}</div>
+                        <div><span class="faculty-status-badge ${statusClass}">${statusText}</span></div>
+                    </td>
+                    <td class="hours-cell">
+                        <div class="hours-display" style="color: ${hoursColor};">${f.currentHours}/${f.maxHours}h</div>
+                        <div class="hours-progress">
+                            <div class="hours-progress-bar ${progressBarClass}" style="width: ${Math.min(100, percentage)}%;"></div>
+                        </div>
+                        <div class="hours-percentage">${Math.round(percentage)}%</div>
+                    </td>
+                    <td>
+                        <div class="subjects-cell">
+                            <div class="subjects-container">
+                                ${f.subjects.map((s, i) => {
+                    const subjectName = getSubjectName(s.subjectCode);
+                    let typeClass = "subject-chip";
+                    if (s.type === "lab") typeClass += " lab";
+                    else if (s.type === "theory") typeClass += " theory";
+                    else if (s.type === "project") typeClass += " project";
+
+                    return `
+                                        <div class="${typeClass}" title="${subjectName}">
+                                            ${s.subjectCode} (${s.weeklyHours}h)
+                                            <span class="remove-btn" onclick="removeSubject('${facultyName}', ${i})">×</span>
+                                        </div>
+                                    `;
+                }).join('')}
+                            </div>
+                            <button class="add-subject-btn" onclick="showAddDialog('${facultyName}')">
+                                + Add Subject
+                            </button>
+                        </div>
+                    </td>
+                `;
+                editTableBody.appendChild(row);
+            });
+
+            document.getElementById("validCount").textContent = valid;
+            document.getElementById("nearLimitCount").textContent = near;
+            document.getElementById("overloadedCount").textContent = over;
+            document.getElementById("totalChangesCount").textContent = pendingEditChanges.length;
+            document.getElementById("pendingChangesCount").innerHTML =
+                pendingEditChanges.length ? `<span>📝 ${pendingEditChanges.length} change${pendingEditChanges.length > 1 ? 's' : ''}</span>` : "No changes";
+        }
+
+        function removeSubject(facultyName, index) {
+            const f = facultyAllocationsEdit[facultyName];
+            if (!f || !f.subjects[index]) return;
+
+            const subject = f.subjects[index];
+            f.subjects.splice(index, 1);
+            f.currentHours -= subject.weeklyHours || 0;
+
+            pendingEditChanges.push({
+                type: "remove",
+                faculty: facultyName,
+                subject: subject.subjectCode
+            });
+
+            populateEditTable();
+        }
+
+        async function showAddDialog(facultyName) {
+            const f = facultyAllocationsEdit[facultyName];
+            if (!f) return;
+
+            try {
+                const res = await fetch("/admin/strict-allocate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ 
+                        viewOnly: true, 
+                        targetSemester: document.getElementById('allocationSemester')?.value || 'ALL',
+                        department: document.getElementById('allocationDept')?.value || 'ALL'
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!data.success || !data.unallocatedSubjects || data.unallocatedSubjects.length === 0) {
+                    alert("No unallocated subjects available");
+                    return;
+                }
+
+                const modal = document.createElement('div');
+                modal.className = 'modal-overlay';
+
+                const modalContent = document.createElement('div');
+                modalContent.className = 'modal-content';
+
+                const currentLoad = Math.round((f.currentHours / f.maxHours) * 100);
+                let statusColor = '#10b981';
+                let statusText = 'Balanced';
+
+                if (f.currentHours > f.maxHours) {
+                    statusColor = '#dc2626';
+                    statusText = 'Overloaded';
+                } else if (f.currentHours === f.maxHours) {
+                    statusColor = '#8b5cf6';
+                    statusText = 'Full';
+                } else if (f.currentHours < f.maxHours) {
+                    statusColor = '#0ea5e9';
+                    statusText = 'Underloaded';
+                }
+
+                let subjectOptions = '';
+                let subjectsData = [];
+
+                for (let idx = 0; idx < data.unallocatedSubjects.length; idx++) {
+                    const subject = data.unallocatedSubjects[idx];
+                    const subjectName = getSubjectName(subject.code);
+                    const subjectHours = subject.weeklyHours || 0;
+                    const totalAfterAdding = f.currentHours + subjectHours;
+                    const wouldExceed = totalAfterAdding > f.maxHours;
+                    const loadPercentage = Math.round((totalAfterAdding / f.maxHours) * 100);
+
+                    let optionColor = '';
+                    let optionText = '';
+
+                    if (wouldExceed) {
+                        optionColor = '#dc2626';
+                        optionText = '❌ OVERLOAD';
+                    } else if (totalAfterAdding === f.maxHours) {
+                        optionColor = '#8b5cf6';
+                        optionText = '✅ WILL BE FULL';
+                    } else {
+                        optionColor = '#0ea5e9';
+                        optionText = '👍 UNDERLOADED';
+                    }
+
+                    subjectsData.push({
+                        subject: subject,
+                        name: subjectName,
+                        hours: subjectHours,
+                        totalAfterAdding: totalAfterAdding,
+                        loadPercentage: loadPercentage,
+                        wouldExceed: wouldExceed,
+                        optionColor: optionColor,
+                        optionText: optionText
+                    });
+
+                    subjectOptions += `<option value="${idx}" style="padding: 8px;">`;
+                    subjectOptions += `${subject.code} - ${subjectName} (${subjectHours}h) - ${subject.type} - After: ${totalAfterAdding}h (${loadPercentage}%) ${optionText}`;
+                    subjectOptions += `</option>`;
+                }
+
+                modalContent.innerHTML = `
+                    <div class="modal-header">
+                        <h3>Add Subject to ${f.name}</h3>
+                        <button class="modal-close" onclick="closeModal(this)">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="faculty-status-card" style="border-left-color: ${statusColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong>${f.designation}</strong><br>
+                                    <span style="font-size: 13px; color: #666;">Current Load</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="font-size: 24px; font-weight: bold; color: ${statusColor};">${f.currentHours}/${f.maxHours}h</span><br>
+                                    <span style="font-size: 14px; color: ${statusColor};">${currentLoad}% - ${statusText}</span>
+                                </div>
+                            </div>
+                            <div style="height: 8px; background: #e2e8f0; border-radius: 4px; margin-top: 15px;">
+                                <div style="height: 100%; width: ${Math.min(100, currentLoad)}%; background: ${statusColor}; border-radius: 4px;"></div>
+                            </div>
+                            ${f.currentHours > f.maxHours ?
+                        `<div style="color: #dc2626; font-size: 14px; margin-top: 15px; padding: 10px; background: #fee2e2; border-radius: 6px;">
+                                    ⚠️ Currently overloaded by ${f.currentHours - f.maxHours}h
+                                </div>` :
+                        `<div style="color: #0ea5e9; font-size: 14px; margin-top: 15px; padding: 10px; background: #e0f2fe; border-radius: 6px;">
+                                    ✓ Available capacity: ${f.maxHours - f.currentHours}h
+                                </div>`
+                    }
+                        </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151; font-size: 14px;">
+                                Select Subject to Add:
+                            </label>
+                            <select class="subject-select" id="subjectSelect">
+                                <option value="">-- Choose a subject --</option>
+                                ${subjectOptions}
+                            </select>
+                        </div>
+
+                        <div id="subjectPreview" class="subject-preview" style="display: none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-cancel" onclick="closeModal(this)">Cancel</button>
+                        <button class="btn-add" id="addBtn" onclick="addSelectedSubject('${facultyName}')" disabled>Add Subject</button>
+                    </div>
+                `;
+
+                modal.appendChild(modalContent);
+                document.body.appendChild(modal);
+
+                const select = document.getElementById('subjectSelect');
+                const preview = document.getElementById('subjectPreview');
+                const addBtn = document.getElementById('addBtn');
+
+                select.addEventListener('change', function () {
+                    const idx = parseInt(this.value);
+                    if (!isNaN(idx) && idx >= 0) {
+                        const subjectData = subjectsData[idx];
+
+                        let previewHTML = `
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div>
+                                    <strong style="font-size: 16px; color: #243b8f;">${subjectData.subject.code}</strong><br>
+                                    <span style="color: #4a5568; font-size: 14px;">${subjectData.name}</span><br>
+                                    <span style="font-size: 13px; color: #718096;">${subjectData.subject.type} • ${subjectData.hours}h/week • Sem ${subjectData.subject.semester || 'N/A'}</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="display: inline-block; padding: 6px 12px; background: ${subjectData.optionColor}; color: white; border-radius: 6px; font-size: 12px; font-weight: bold;">
+                                        ${subjectData.optionText}
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #d1d5db;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                    <span style="font-size: 14px;">After adding:</span>
+                                    <strong style="font-size: 16px;">${subjectData.totalAfterAdding}/${f.maxHours}h (${subjectData.loadPercentage}%)</strong>
+                                </div>
+                                <div style="height: 8px; background: #e2e8f0; border-radius: 4px;">
+                                    <div style="height: 100%; width: ${Math.min(100, subjectData.loadPercentage)}%; background: ${subjectData.wouldExceed ? '#dc2626' : (subjectData.totalAfterAdding === f.maxHours ? '#8b5cf6' : '#0ea5e9')}; border-radius: 4px;"></div>
+                                </div>
+                            </div>
+                        `;
+
+                        preview.innerHTML = previewHTML;
+                        preview.style.display = 'block';
+                        addBtn.disabled = false;
+                        addBtn.classList.add('active');
+
+                        addBtn.dataset.subjectIndex = idx;
+                    } else {
+                        preview.style.display = 'none';
+                        addBtn.disabled = true;
+                        addBtn.classList.remove('active');
+                    }
+                });
+
+                modal.dataset.subjectsData = JSON.stringify(subjectsData);
+                modal.dataset.facultyName = facultyName;
+
+            } catch (err) {
+                console.error("Error loading unallocated subjects:", err);
+                alert("Error loading available subjects");
+            }
+        }
+
+        function closeModal(btn) {
+            const modal = btn.closest('.modal-overlay');
+            if (modal) modal.remove();
+        }
+
+        async function addSelectedSubject(facultyName) {
+            const modal = document.querySelector('.modal-overlay');
+            if (!modal) return;
+
+            const select = document.getElementById('subjectSelect');
+            const addBtn = document.getElementById('addBtn');
+            const idx = addBtn.dataset.subjectIndex;
+
+            if (!idx) return;
+
+            const subjectsData = JSON.parse(modal.dataset.subjectsData);
+            const subjectData = subjectsData[parseInt(idx)];
+            const f = facultyAllocationsEdit[facultyName];
+
+            if (!subjectData || !f) return;
+
+            const alreadyHas = f.subjects.some(s => s.subjectCode === subjectData.subject.code);
+            if (alreadyHas) {
+                alert(`Faculty already has subject ${subjectData.subject.code}`);
+                return;
+            }
+
+            f.subjects.push({
+                subjectCode: subjectData.subject.code,
+                weeklyHours: subjectData.hours,
+                type: subjectData.subject.type.toLowerCase().includes("lab") ? "lab" :
+                    (subjectData.subject.type.toLowerCase().includes("project") ? "project" : "theory")
+            });
+            f.currentHours += subjectData.hours;
+
+            pendingEditChanges.push({
+                type: "add",
+                faculty: facultyName,
+                subject: subjectData.subject.code,
+                hours: subjectData.hours,
+                addedAt: new Date().toISOString()
+            });
+
+            modal.remove();
+            populateEditTable();
+
+            const newLoadPercentage = Math.round((f.currentHours / f.maxHours) * 100);
+            let successMessage = `✅ Subject ${subjectData.subject.code} added successfully!\n`;
+            successMessage += `New load: ${f.currentHours}/${f.maxHours}h (${newLoadPercentage}%)`;
+
+            if (f.currentHours > f.maxHours) {
+                const overloadAmount = f.currentHours - f.maxHours;
+                successMessage += `\n\n⚠️ Faculty is now overloaded by ${overloadAmount}h!`;
+            } else if (f.currentHours === f.maxHours) {
+                successMessage += `\n\n✅ Faculty is now at full capacity!`;
+            }
+
+            alert(successMessage);
+        }
+
+        // ========== UPDATED: SAVE EDITED ALLOCATIONS AND REFRESH MAIN TABLE ==========
+        async function saveEditedAllocations() {
+            if (pendingEditChanges.length === 0) {
+                showError("No changes to save");
+                return;
+            }
+
+            const overloaded = Object.values(facultyAllocationsEdit)
+                .filter(f => f.currentHours > f.maxHours);
+
+            if (overloaded.length > 0) {
+                let overloadMessage = `Warning: ${overloaded.length} faculty member(s) will be overloaded:\n\n`;
+
+                overloaded.forEach(f => {
+                    const overloadAmount = f.currentHours - f.maxHours;
+                    overloadMessage += `• ${f.name}: ${f.currentHours}/${f.maxHours}h (Over by ${overloadAmount}h)\n`;
+                });
+
+                overloadMessage += "\nAre you sure you want to save?";
+
+                if (!confirm(overloadMessage)) {
+                    return;
+                }
+            }
+
+            if (!confirm(`Save ${pendingEditChanges.length} changes?`)) return;
+
+            try {
+                showLoading(true);
+
+                // Prepare data for saving
+                const allocationsToSave = [];
+                Object.keys(facultyAllocationsEdit).forEach(facultyName => {
+                    const f = facultyAllocationsEdit[facultyName];
+                    f.subjects.forEach(subject => {
+                        allocationsToSave.push({
+                            facultyName: facultyName,
+                            subjectCode: subject.subjectCode,
+                            weeklyHours: subject.weeklyHours,
+                            subjectType: subject.type
+                        });
+                    });
+                });
+
+                console.log("Saving allocations:", allocationsToSave);
+                console.log("Changes:", pendingEditChanges);
+
+                // Save to server
+                const res = await fetch("/admin/save-edited-allocations", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        allocations: allocationsToSave,
+                        changes: pendingEditChanges,
+                        academicYear: (document.getElementById('allocationAcademicYear')?.value || "").trim() || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+                        term: document.getElementById('allocationTerm')?.value || "Odd",
+                        semester: parseInt(document.getElementById('allocationSemester')?.value) || 1
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    showSuccess("Changes saved successfully!");
+
+                    // Hide edit mode
+                    document.getElementById("editAllocationCard").style.display = "none";
+
+                    // Clear pending changes
+                    pendingEditChanges = [];
+
+                    // Show loading state in allocation table
+                    if (allocationTableBody) {
+                        allocationTableBody.innerHTML = `<tr><td colspan="11" class="empty-state">Loading updated allocations...</td></tr>`;
+                    }
+
+                    // Show allocation card
+                    document.getElementById("allocationCard").style.display = "block";
+
+                    // Force a fresh fetch of allocations from server
+                    console.log("Fetching fresh allocations from server...");
+
+                    // Fetch fresh allocations using strict-allocate with viewOnly
+                    const fetchRes = await fetch("/admin/strict-allocate", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ 
+                        viewOnly: true, 
+                        targetSemester: document.getElementById('allocationSemester')?.value || 'ALL',
+                        department: document.getElementById('allocationDept')?.value || 'ALL'
+                    })
+                    });
+
+                    const fetchData = await fetchRes.json();
+
+                    if (fetchData.success) {
+                        // Fetch subject names again to ensure cache is fresh
+                        await fetchSubjectNames();
+
+                        // Display the updated allocation results
+                        displayAllocationResults(fetchData);
+
+                        // Also update the edit mode data for next time
+                        await refreshEditModeData();
+
+                        showSuccess("Allocations updated successfully!");
+
+                        // Scroll to the allocation results
+                        setTimeout(() => {
+                            document.getElementById("allocationCard").scrollIntoView({
+                                behavior: 'smooth'
+                            });
+                        }, 100);
+                    } else {
+                        showError("Failed to refresh allocations");
+                    }
+
+                } else {
+                    showError("Save failed: " + (data.message || "Unknown error"));
+                }
+
+            } catch (err) {
+                console.error("Save error:", err);
+                showError("Error saving changes: " + err.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Helper function to refresh edit mode data
+        async function refreshEditModeData() {
+            try {
+                // Clear existing edit data
+                facultyAllocationsEdit = {};
+
+                // Fetch fresh allocations
+                const res = await fetch("/admin/strict-allocate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ 
+                        viewOnly: true, 
+                        targetSemester: document.getElementById('allocationSemester')?.value || 'ALL',
+                        department: document.getElementById('allocationDept')?.value || 'ALL'
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success && data.facultyResults && data.facultyResults.length > 0) {
+                    // Get max hours config
+                    const configRes = await fetch("/admin/get-workload-config");
+                    const config = await configRes.json();
+
+                    const maxHours = {
+                        "Professor": config.config?.["Professor"]?.weeklyHours || 12,
+                        "Associate Professor": config.config?.["Associate Professor"]?.weeklyHours || 14,
+                        "Assistant Professor": config.config?.["Assistant Professor"]?.weeklyHours || 16
+                    };
+
+                    // Rebuild edit data from fresh results
+                    data.facultyResults.forEach(f => {
+                        const allSubjects = [];
+                        const theorySubjects = f.theorySubjects || [];
+                        const labSubjects = f.labSubjects || [];
+
+                        theorySubjects.forEach(subjectStr => {
+                            const match = subjectStr.match(/([A-Z0-9]+)\s*\((\d+)h\)/);
+                            if (match) {
+                                allSubjects.push({
+                                    subjectCode: match[1],
+                                    weeklyHours: parseInt(match[2]) || 0,
+                                    type: "theory"
+                                });
+                            }
+                        });
+
+                        labSubjects.forEach(subjectStr => {
+                            const match = subjectStr.match(/([A-Z0-9]+)\s*\((\d+)h\)/);
+                            if (match) {
+                                allSubjects.push({
+                                    subjectCode: match[1],
+                                    weeklyHours: parseInt(match[2]) || 0,
+                                    type: "lab"
+                                });
+                            }
+                        });
+
+                        const totalHours = allSubjects.reduce((sum, s) => sum + (s.weeklyHours || 0), 0);
+
+                        facultyAllocationsEdit[f.faculty] = {
+                            name: f.faculty,
+                            designation: f.designation,
+                            subjects: allSubjects,
+                            maxHours: maxHours[f.designation] || 16,
+                            currentHours: totalHours
+                        };
+                    });
+
+                    console.log("Edit mode data refreshed successfully");
+                }
+            } catch (err) {
+                console.error("Error refreshing edit mode data:", err);
+            }
+        }
+
+        // Cancel edit and refresh allocation table
+        function cancelEdit() {
+            if (pendingEditChanges.length > 0 && !confirm("Discard changes?")) return;
+
+            // Hide edit card
+            document.getElementById("editAllocationCard").style.display = "none";
+
+            // Show allocation card
+            document.getElementById("allocationCard").style.display = "block";
+
+            // Clear pending changes
+            pendingEditChanges = [];
+
+            // Show loading state
+            if (allocationTableBody) {
+                allocationTableBody.innerHTML = `<tr><td colspan="11" class="empty-state">Refreshing allocations...</td></tr>`;
+            }
+
+            // Refresh the allocation display to ensure it's showing latest data
+            loadAllocations();
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Student Dashboard</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* Reset */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    /* Full height html & body */
+    html,
+    body {
+      height: 100%;
+      min-height: 100%;
+      background: linear-gradient(135deg, #243b8f, #1b2f6b);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    .top-header {
+      height: 70px;
+      background: #1e3a8a;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 600;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    #studentInfo {
+      position: absolute;
+      right: 30px;
+      font-size: 14px;
+      font-weight: 400;
+      opacity: 0.95;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* LAYOUT */
+    .wrapper {
+      display: flex;
+      flex: 1;
+      padding: 25px;
+      gap: 25px;
+      min-height: 0;
+      /* important for flex scrolling */
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 230px;
+      background: white;
+      border-radius: 16px;
+      padding: 20px 0;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .sidebar h2 {
+      text-align: center;
+      color: #243b8f;
+      margin-bottom: 25px;
+    }
+
+    .sidebar a {
+      padding: 14px 22px;
+      text-decoration: none;
+      color: #333;
+      cursor: pointer;
+    }
+
+    .sidebar a.active {
+      background: #243b8f;
+      color: white;
+      border-radius: 8px;
+    }
+
+    .logout {
+      margin: 20px;
+      padding: 14px;
+      background: #e63946;
+      color: white;
+      text-align: center;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .logout:hover {
+      background: #c53030;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(229, 57, 70, 0.3);
+    }
+
+    /* MAIN */
+    .main {
+      flex: 1;
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    /* TABLE */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      background: #243b8f;
+      color: white;
+      padding: 12px;
+    }
+
+    td {
+      padding: 12px;
+      text-align: center;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    tr:nth-child(even) {
+      background: #f6f8ff;
+    }
+
+    /* NOTIFICATION */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px 25px;
+      border-radius: 8px;
+      color: white;
+      font-weight: 500;
+      z-index: 3000;
+      animation: slideInRight 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .notification.success {
+      background: #10b981;
+    }
+
+    .notification.error {
+      background: #ef4444;
+    }
+
+    .notification.warning {
+      background: #f59e0b;
+    }
+
+    .notification.info {
+      background: #3b82f6;
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* LOADING OVERLAY */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+      backdrop-filter: blur(2px);
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #243b8f;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* SESSION WARNING */
+    .session-warning {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      color: #92400e;
+      padding: 12px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      animation: slideDown 0.5s ease;
+    }
+
+    @keyframes slideDown {
+      from {
+        transform: translateY(-100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* TAB SYNC INDICATOR */
+    .tab-sync-indicator {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      padding: 10px 20px;
+      border-radius: 30px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      z-index: 100;
+      animation: fadeInUp 0.5s ease;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        transform: translateY(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .sync-icon {
+      color: #10b981;
+      animation: spin 2s linear infinite;
+    }
+
+    /* ===== DEPARTMENT TIMETABLE SECTION ===== */
+    .section {
+      display: none;
+    }
+    .section.active {
+      display: block;
+    }
+
+    .dept-tt-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: flex-end;
+      margin-bottom: 24px;
+      background: #f6f8ff;
+      border: 1px solid #dde3f5;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .dept-tt-controls .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 160px;
+    }
+
+    .dept-tt-controls label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1e3a8a;
+    }
+
+    .dept-tt-controls select,
+    .dept-tt-controls input[type="text"] {
+      padding: 9px 12px;
+      border: 1.5px solid #c7d2fe;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #1e293b;
+      background: white;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .dept-tt-controls select:focus,
+    .dept-tt-controls input[type="text"]:focus {
+      border-color: #243b8f;
+    }
+
+    .btn-fetch {
+      padding: 10px 24px;
+      background: linear-gradient(135deg, #243b8f, #1b2f6b);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      white-space: nowrap;
+      align-self: flex-end;
+    }
+
+    .btn-fetch:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(36, 59, 143, 0.35);
+    }
+
+    .btn-fetch:active {
+      transform: translateY(0);
+    }
+
+    /* ===== UPDATED TIMETABLE GRID (AXES SWAPPED) ===== */
+    .tt-grid-container {
+      background: #f8fafc;
+      border-radius: 12px;
+      overflow-x: auto;
+      border: 1px solid #e2e8f0;
+      margin-top: 20px;
+    }
+
+    .tt-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      table-layout: fixed;
+      min-width: 800px; /* Ensure minimal width for desktop readability */
+    }
+
+    .tt-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #f1f5f9;
+      color: #475569;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 15px 10px;
+      border-bottom: 2px solid #e2e8f0;
+      border-right: 1px solid #e2e8f0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .tt-time-col {
+      position: sticky;
+      left: 0;
+      z-index: 10;
+      background: #f8fafc;
+      width: 140px;
+      font-weight: 700;
+      color: #1e40af;
+      border-right: 2px solid #e2e8f0;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 15px;
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .tt-slot {
+      padding: 8px;
+      border-bottom: 1px solid #e2e8f0;
+      border-right: 1px solid #e2e8f0;
+      vertical-align: top;
+      background: #fff;
+      min-height: 100px;
+      transition: background 0.2s;
+    }
+
+    .tt-slot:hover {
+      background: #fdfdfd;
+    }
+
+    /* Premium Subject Cards */
+    .tt-slot-entry {
+      background: #fff;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+      border-left: 5px solid #3b82f6;
+      margin-bottom: 6px;
+      text-align: left;
+    }
+
+    .tt-slot-entry:last-child {
+      margin-bottom: 0;
+    }
+
+    .tt-slot-entry .sub-abbr {
+      display: block;
+      font-size: 14px;
+      font-weight: 800;
+      color: #1e293b;
+      margin-bottom: 4px;
+    }
+
+    .tt-slot-entry .fac-names {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: #64748b;
+      line-height: 1.2;
+    }
+
+    /* Type-based Colors */
+    .tt-slot-entry.theory { border-left-color: #3b82f6; background: #eff6ff; }
+    .tt-slot-entry.lab { border-left-color: #10b981; background: #f0fdf4; }
+    .tt-slot-entry.project { border-left-color: #8b5cf6; background: #faf5ff; }
+    .tt-slot-entry.manual { 
+      border-left-color: #f59e0b; 
+      background: #fffbeb; 
+      border-left-style: double;
+      border-left-width: 6px;
+    }
+
+    .tt-parallel-container {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .tt-parallel-container .tt-slot-entry {
+      flex: 1 1 calc(50% - 6px);
+      min-width: 80px;
+    }
+
+    /* Responsive - Mobile Stacked View */
+    @media (max-width: 768px) {
+      .tt-table {
+        display: block;
+        min-width: auto;
+      }
+      .tt-table thead {
+        display: none;
+      }
+      .tt-table tbody, .tt-table tr, .tt-table td {
+        display: block;
+        width: 100%;
+      }
+      .tt-table tr {
+        margin-bottom: 25px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
+      }
+      .tt-time-col {
+        position: static;
+        width: 100%;
+        background: #f1f5f9;
+        border-bottom: 2px solid #e2e8f0;
+        border-right: none;
+        font-size: 14px;
+      }
+      .tt-slot {
+        min-height: auto;
+        padding: 15px;
+        border-right: none;
+      }
+      /* In mobile view, we need to show the Day label for each tr */
+      .tt-table tr::before {
+        content: attr(data-day);
+        display: block;
+        padding: 10px;
+        text-align: center;
+        background: #1e3a8a;
+        color: white;
+        font-weight: 700;
+        border-radius: 11px 11px 0 0;
+      }
+    }
+
+    /* Legend Section */
+    .tt-legend {
+      display: flex;
+      gap: 15px;
+      margin: 20px 0;
+      padding: 12px;
+      background: white;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      flex-wrap: wrap;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #475569;
+      font-weight: 500;
+    }
+    .legend-color {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+    }
+
+    /* Info / error messages */
+    .tt-message {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      margin-top: 6px;
+    }
+
+    .tt-message.error {
+      background: #fef2f2;
+      border: 1px solid #fca5a5;
+      color: #b91c1c;
+    }
+
+    .tt-message.info {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+    }
+
+    .tt-info-bar {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    .tt-info-bar span {
+      background: #f0f4ff;
+      border: 1px solid #c7d2fe;
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <!-- Notification Container -->
+  <div id="notificationContainer"></div>
+
+  <div class="top-header">
+    Student Dashboard
+    <span id="studentInfo"></span>
+  </div>
+
+  <div class="wrapper">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <h2>Student</h2>
+      <a class="active sidebar-link">Timetable</a>
+      <div style="flex:1"></div>
+      <div class="logout" onclick="logout()">Logout</div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main">
+      <!-- Session Warning -->
+      <div id="sessionWarning" class="session-warning" style="display: none;">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span id="sessionWarningMessage">Your session will expire soon. Please save your work.</span>
+      </div>
+
+      <div id="timetable" class="section active">
+        <h3 style="margin-bottom: 20px; color: #1e3a8a;">Your Weekly Timetable</h3>
+        
+        <!-- Selection for Your Timetable -->
+        <div id="ttSetup" class="dept-tt-controls" style="margin-bottom: 20px; padding: 15px;">
+          <div class="form-group" style="min-width: 100px;">
+            <label>Semester</label>
+            <select id="mySem">
+              <option value="">Select</option>
+              <option value="S1">S1</option><option value="S2">S2</option><option value="S3">S3</option>
+              <option value="S4">S4</option><option value="S5">S5</option><option value="S6">S6</option>
+              <option value="S7">S7</option><option value="S8">S8</option>
+            </select>
+          </div>
+          <div class="form-group" style="min-width: 120px;">
+            <label>Year</label>
+            <input type="text" id="myYear" placeholder="2025-26" style="padding: 10px;">
+          </div>
+          <button class="btn-fetch" onclick="savePersonalSettings()" style="padding: 10px 15px;">Set & Fetch</button>
+        </div>
+
+        <div id="myTTResult">
+          <div class="tt-message info">ℹ️ Select your Semester to view your timetable.</div>
+          <div class="tt-grid-wrapper">
+            <table class="tt-grid" id="mainTTTable">
+              <thead>
+                <tr id="mainTTHeader">
+                  <th>Day</th>
+                  <th>1</th>
+                  <th>2</th>
+                  <th>3</th>
+                  <th>4</th>
+                  <th>5</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Tab Sync Indicator -->
+  <div class="tab-sync-indicator" id="tabSyncIndicator" style="display: none;">
+    <i class="fas fa-sync-alt sync-icon"></i>
+    <span id="syncMessage">Synchronizing with other tabs...</span>
+  </div>
+
+  <!-- Session Manager Script -->
+  <script>
+    // Session Manager - Simplified version
+    window.SessionManager = {
+      SESSION_KEY: 'app_session',
+
+      getSession() {
+        const sessionData = localStorage.getItem(this.SESSION_KEY);
+        if (!sessionData) return null;
+        try {
+          return JSON.parse(sessionData);
+        } catch {
+          return null;
+        }
+      },
+
+      setSession(role, userData = {}) {
+        const session = {
+          loggedIn: true,
+          role: role,
+          username: userData.username || userData.email,
+          timestamp: Date.now(),
+          lastActivity: Date.now(),
+          userData: userData
+        };
+        localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+        return session;
+      },
+
+      clearSession() {
+        localStorage.removeItem(this.SESSION_KEY);
+      },
+
+      forceLogout(message) {
+        console.log("Force logout:", message);
+        if (message) sessionStorage.setItem('logout_message', message);
+        this.clearSession();
+        window.location.href = 'index.html';
+      }
+    };
+
+    /* ===== BACK BUTTON PREVENT LOGOUT ===== */
+    history.pushState(null, null, location.href);
+    window.onpopstate = function () {
+      history.go(1);
+    }
+
+    // Global variables
+    let sessionCheckInterval = null;
+    let lastActivityTime = Date.now();
+
+    /* ROLE CHECK */
+    (function () {
+      const session = SessionManager.getSession();
+
+      if (!session) {
+        // Check legacy localStorage
+        if (localStorage.getItem("role") !== "student") {
+          alert("Unauthorized access");
+          location.href = "index.html";
+        } else {
+          // Create session from legacy data
+          SessionManager.setSession("student", {
+            username: localStorage.getItem("username")
+          });
+          updateSessionActivity();
+          startSessionMonitoring();
+        }
+      } else if (session.role !== "student") {
+        alert("Unauthorized access");
+        SessionManager.forceLogout("Unauthorized access");
+      } else {
+        // Update session activity
+        updateSessionActivity();
+        startSessionMonitoring();
+
+        // Display student info if available
+        if (session.userData) {
+          document.getElementById('studentInfo').textContent = session.userData.username || '';
+        }
+      }
+    })();
+
+    // Update session activity
+    function updateSessionActivity() {
+      lastActivityTime = Date.now();
+      const session = SessionManager.getSession();
+      if (session) {
+        session.lastActivity = lastActivityTime;
+        localStorage.setItem(SessionManager.SESSION_KEY, JSON.stringify(session));
+      }
+    }
+
+    // Start session monitoring
+    function startSessionMonitoring() {
+      // Check session every minute
+      sessionCheckInterval = setInterval(() => {
+        const session = SessionManager.getSession();
+        if (!session) {
+          // Session was cleared in another tab
+          showNotification("Session ended in another tab", "warning");
+          setTimeout(() => {
+            window.location.href = "index.html";
+          }, 2000);
+        } else {
+          // Check for inactivity (30 minutes)
+          const inactivityPeriod = Date.now() - lastActivityTime;
+          const WARNING_TIME = 25 * 60 * 1000; // 25 minutes
+          const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+          if (inactivityPeriod > SESSION_TIMEOUT) {
+            // Session timeout due to inactivity
+            SessionManager.forceLogout("Session expired due to inactivity");
+          } else if (inactivityPeriod > WARNING_TIME) {
+            // Show warning
+            showSessionWarning(`Your session will expire in ${Math.ceil((SESSION_TIMEOUT - inactivityPeriod) / 60000)} minutes due to inactivity.`);
+          }
+        }
+      }, 60000);
+
+      // Track user activity
+      ['click', 'keypress', 'scroll', 'mousemove'].forEach(event => {
+        document.addEventListener(event, updateSessionActivity);
+      });
+    }
+
+    // Show session warning
+    function showSessionWarning(message) {
+      const warningDiv = document.getElementById('sessionWarning');
+      const warningMsg = document.getElementById('sessionWarningMessage');
+      warningMsg.textContent = message;
+      warningDiv.style.display = 'flex';
+
+      // Auto-hide after 10 seconds
+      setTimeout(() => {
+        warningDiv.style.display = 'none';
+      }, 10000);
+    }
+
+    // Show notification
+    function showNotification(message, type = 'info') {
+      const container = document.getElementById('notificationContainer');
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+
+      let icon = 'fa-info-circle';
+      if (type === 'success') icon = 'fa-check-circle';
+      else if (type === 'error') icon = 'fa-exclamation-circle';
+      else if (type === 'warning') icon = 'fa-exclamation-triangle';
+
+      notification.innerHTML = `
+    <i class="fas ${icon}"></i>
+    ${message}
+  `;
+
+      container.appendChild(notification);
+
+      // Remove after 3 seconds
+      setTimeout(() => {
+        notification.style.animation = 'slideOutRight 0.3s ease';
+        setTimeout(() => {
+          notification.remove();
+        }, 300);
+      }, 3000);
+    }
+
+    // Show loading overlay
+    function showLoading() {
+      document.getElementById('loadingOverlay').style.display = 'flex';
+    }
+
+    // Hide loading overlay
+    function hideLoading() {
+      document.getElementById('loadingOverlay').style.display = 'none';
+    }
+
+    // Listen for storage events (updates from other tabs)
+    window.addEventListener('storage', function (e) {
+      if (e.key === SessionManager.SESSION_KEY) {
+        if (!e.newValue) {
+          // Session cleared in another tab
+          showNotification("Logged out from another tab", "warning");
+          setTimeout(() => {
+            window.location.href = "index.html";
+          }, 2000);
+        }
+      }
+    });
+
+    /* SECTION SWAPPING */
+    function showSection(id, el) {
+      document.querySelectorAll(".section").forEach(s => s.style.display = 'none');
+      document.getElementById(id).style.display = 'block';
+      document.querySelectorAll(".sidebar-link").forEach(l => l.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+
+    /* ===== PERSONAL TIMETABLE LOGIC ===== */
+    function savePersonalSettings() {
+      const sem = document.getElementById('mySem').value;
+      const year = document.getElementById('myYear').value.trim();
+
+      if (!sem || !year) {
+        showNotification("Please select Semester and Year", "warning");
+        return;
+      }
+
+      localStorage.setItem("student_sem", sem);
+      localStorage.setItem("student_year", year);
+      
+      showNotification("Settings saved!", "success");
+      fetchMyTimetable();
+    }
+
+    function loadPersonalSettings() {
+      const sem = localStorage.getItem("student_sem");
+      const year = localStorage.getItem("student_year");
+
+      if (sem) document.getElementById('mySem').value = sem;
+      if (year) document.getElementById('myYear').value = year;
+
+      if (sem && year) {
+        fetchMyTimetable();
+      }
+    }    async function fetchMyTimetable() {
+      const sem = localStorage.getItem("student_sem");
+      const year = localStorage.getItem("student_year");
+      const resultDiv = document.getElementById('myTTResult');
+
+      if (!sem || !year) return;
+
+      try {
+        const res = await fetch(`/api/student/get-timetable?semester=${encodeURIComponent(sem)}&year=${encodeURIComponent(year)}`);
+        const data = await res.json();
+
+        if (!data.success) {
+          resultDiv.innerHTML = `<div class="tt-message error">⚠️ ${data.message}</div>`;
+          return;
+        }
+
+        renderTimetableGrid(data.timetable, sem, year, 'myTTResult');
+
+      } catch (err) {
+        console.error('Fetch personal timetable error:', err);
+        resultDiv.innerHTML = `<div class="tt-message error">❌ Unable to fetch your timetable.</div>`;
+      }
+    }
+
+    function renderTimetableGrid(ttData, semester, year, containerId) {
+      const resultDiv = document.getElementById(containerId);
+      const slots = ttData.slots || [];
+
+      if (slots.length === 0) {
+        resultDiv.innerHTML = `<div class="tt-message info">ℹ️ No timetable has been generated yet for the selected Semester.</div>`;
+        return;
+      }
+
+      const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const uniqueDays = [...new Set(slots.map(s => s.day))].sort((a, b) => daysOrder.indexOf(a) - daysOrder.indexOf(b));
+
+      const uniqueTimes = [...new Set(slots.map(s => s.timeSlot))].sort((a, b) => {
+        const parseTime = (t) => {
+          const parts = t.split(' - ');
+          if (parts.length < 1) return 0;
+          const firstPart = parts[0];
+          const [time, period] = firstPart.split(' ');
+          let [hours, minutes] = time.split(':').map(Number);
+          if (period === 'PM' && hours !== 12) hours += 12;
+          if (period === 'AM' && hours === 12) hours = 0;
+          return hours * 60 + minutes;
+        };
+        return parseTime(a) - parseTime(b);
+      });
+
+      // Prepare legend and subject details
+      const subjectMap = {}; // subjectName: { faculties: Set, type }
+      slots.forEach(s => {
+        if (s.entries) {
+          s.entries.forEach(e => {
+            if (!subjectMap[e.subjectName]) {
+              subjectMap[e.subjectName] = { faculties: new Set(), type: e.subjectType };
+            }
+            if (e.facultyName) subjectMap[e.subjectName].faculties.add(e.facultyName);
+          });
+        }
+      });
+
+      const infoBar = `
+        <div class="tt-info-bar">
+          <span>🏫 Program: ${ttData.name || 'Timetable'}</span>
+          <span>📅 Sem: ${semester}</span>
+          <span>🗓️ Year: ${year}</span>
+        </div>`;
+
+      let html = `
+        ${infoBar}
+        <div class="tt-legend">
+          <div class="legend-item"><div class="legend-color" style="background:#3b82f6;"></div> Theory</div>
+          <div class="legend-item"><div class="legend-color" style="background:#10b981;"></div> Lab</div>
+          <div class="legend-item"><div class="legend-color" style="background:#8b5cf6;"></div> Project</div>
+          <div class="legend-item"><div class="legend-color" style="background:#f59e0b; border: 1px dashed #d97706;"></div> Manual</div>
+        </div>
+        <div class="tt-grid-container">
+          <table class="tt-table">
+            <thead>
+              <tr>
+                <th class="tt-time-col" style="width: 100px;">Day</th>
+                ${uniqueTimes.map(time => `<th>${time}</th>`).join("")}
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      uniqueDays.forEach(day => {
+        html += `<tr>
+          <td class="tt-time-col">${day}</td>`;
+        
+        uniqueTimes.forEach(time => {
+          const slot = slots.find(s => s.day === day && s.timeSlot === time);
+          const rawEntries = (slot && slot.entries) ? slot.entries : [];
+          
+          // DEDUPLICATION: Show only one occurrence per subject in the grid
+          let entries = [];
+          if (rawEntries.length > 0) {
+            const seenSubjects = new Set();
+            rawEntries.forEach(e => {
+              const name = (e.subjectName || '').trim();
+              if (name && !seenSubjects.has(name)) {
+                entries.push(e);
+                seenSubjects.add(name);
+              }
+            });
+          }
+
+          let cellContent = "";
+          if (entries.length > 0) {
+            const isParallel = entries.length > 1;
+            
+            if (isParallel) {
+              cellContent = `<div class="tt-parallel-container">`;
+              entries.forEach(e => {
+                const type = (e.subjectType || "THEORY").toUpperCase();
+                const typeClass = type.toLowerCase();
+                cellContent += `
+                  <div class="tt-slot-entry ${typeClass}">
+                    <span class="sub-abbr">${e.subjectName}</span>
+                  </div>
+                `;
+              });
+              cellContent += `</div>`;
+            } else {
+              const e = entries[0];
+              const type = (e.subjectType || "THEORY").toUpperCase();
+              const typeClass = type.toLowerCase();
+              cellContent = `
+                <div class="tt-slot-entry ${typeClass}">
+                  <span class="sub-abbr">${e.subjectName}</span>
+                </div>
+              `;
+            }
+          }
+
+          html += `<td class="tt-slot" data-day="${day}">${cellContent}</td>`;
+        });
+        html += `</tr>`;
+      });
+
+      html += `</tbody></table></div>`;
+
+      // Build Faculty Mapping Table
+      if (Object.keys(subjectMap).length > 0) {
+        let tableRows = Object.keys(subjectMap).sort().map(subj => {
+          const details = subjectMap[subj];
+          const facList = Array.from(details.faculties).sort().join(', ');
+          return `
+            <tr>
+              <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 500; color: #1e3a8a;">${subj}</td>
+              <td style="padding: 12px; border: 1px solid #e2e8f0; color: #475569;">${facList}</td>
+            </tr>
+          `;
+        }).join('');
+
+        html += `
+          <div style="margin-top: 35px; overflow: hidden; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+            <div style="background: #f8fafc; padding: 15px 20px; border-bottom: 1px solid #e2e8f0;">
+               <h4 style="margin: 0; color: #1e3a8a; display: flex; align-items: center; gap: 8px;">
+                 <i class="fas fa-users-rectangle"></i> Subject – Teaching Faculty Mapping
+               </h4>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; background: white;">
+              <thead>
+                <tr style="background: #f1f5f9;">
+                  <th style="padding: 12px; border: 1px solid #e2e8f0; text-align: left; font-size: 13px; color: #1e3a8a;">Subject</th>
+                  <th style="padding: 12px; border: 1px solid #e2e8f0; text-align: left; font-size: 13px; color: #1e3a8a;">Faculty</th>
+                </tr>
+              </thead>
+              <tbody style="font-size: 13px;">
+                ${tableRows}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      resultDiv.innerHTML = html;
+    }
+
+    // Initialize on load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadPersonalSettings();
+    });
+
+
+    /* LOGOUT */
+    function logout() {
+      if (confirm("Are you sure you want to logout?")) {
+        showLoading();
+
+        // Clear intervals
+        if (sessionCheckInterval) {
+          clearInterval(sessionCheckInterval);
+        }
+
+        // Clear storage
+        localStorage.clear();
+        sessionStorage.clear();
+
+        // Force logout using session manager
+        SessionManager.forceLogout("Logged out successfully");
+      }
+    }
+  </script>
+
+  <!-- Font Awesome for icons (needed for notifications) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+
+</body>
+
+</html>

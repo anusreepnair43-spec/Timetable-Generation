@@ -1,0 +1,3833 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Panel</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- Session Manager -->
+  <script src="session-manager.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+      height: 100vh;
+      background: linear-gradient(135deg, #243b8f, #1b2f6b);
+    }
+
+    /* HEADER */
+    .top-header {
+      height: 70px;
+      background: #1e3a8a;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 600;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    /* LAYOUT */
+    .wrapper {
+      display: flex;
+      height: calc(100vh - 70px);
+      padding: 30px;
+      gap: 30px;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 260px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+      display: flex;
+      flex-direction: column;
+      padding: 25px 0;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #243b8f;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .sidebar a {
+      padding: 14px 26px;
+      cursor: pointer;
+      color: #333;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .sidebar a i {
+      width: 20px;
+      font-size: 16px;
+    }
+
+    .sidebar a:hover {
+      background: #eef2ff;
+    }
+
+    .sidebar a.active {
+      background: #243b8f;
+      color: white;
+      border-radius: 8px;
+    }
+
+    .sidebar a.active i {
+      color: white;
+    }
+
+    /* LOGOUT */
+    .logout {
+      margin: 20px;
+      margin-top: auto;
+      background: #e63946;
+      padding: 12px;
+      text-align: center;
+      border-radius: 12px;
+      cursor: pointer;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .logout:hover {
+      background: #c53030;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(229, 57, 70, 0.3);
+    }
+
+    /* MAIN */
+    .main {
+      flex: 1;
+      background: #fff;
+      border-radius: 20px;
+      padding: 30px;
+      overflow-y: auto;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section h3 {
+      margin-bottom: 15px;
+      color: #243b8f;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* TABLE */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+
+    th,
+    td {
+      padding: 12px;
+      text-align: center;
+    }
+
+    th {
+      background: #243b8f;
+      color: white;
+      font-weight: 500;
+    }
+
+    tr:nth-child(even) {
+      background: #f6f8ff;
+    }
+
+    tr:hover {
+      background: #eef2ff;
+    }
+
+    /* BUTTONS */
+    button {
+      padding: 8px 15px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 2px;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .approve {
+      background: #38b2ac;
+      color: white;
+    }
+
+    .reject {
+      background: #dc2626;
+      color: white;
+    }
+
+    .lock {
+      background: #dc2626;
+      color: white;
+    }
+
+    .unlock {
+      background: #16a34a;
+      color: white;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 5px;
+      justify-content: center;
+    }
+
+    /* MODAL FOR REJECTION */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 2000;
+      display: none;
+      /* Hidden by default */
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      animation: modalFadeIn 0.3s ease-out;
+      overflow: hidden;
+    }
+
+    @keyframes modalFadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(-50px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .modal-header h3 {
+      margin: 0;
+      color: #243b8f;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 22px;
+      cursor: pointer;
+      color: #6b7280;
+      padding: 0 5px;
+    }
+
+    .close-btn:hover {
+      color: #dc2626;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 15px;
+    }
+
+    /* TEXTAREA */
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      resize: vertical;
+      min-height: 100px;
+      font-family: 'Poppins', sans-serif;
+      margin: 10px 0;
+      transition: border-color 0.3s ease;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #243b8f;
+      box-shadow: 0 0 0 3px rgba(36, 59, 143, 0.1);
+    }
+
+    /* SESSION WARNING */
+    .session-warning {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      color: #92400e;
+      padding: 12px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      animation: slideDown 0.5s ease;
+    }
+
+    @keyframes slideDown {
+      from {
+        transform: translateY(-100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* LOADING OVERLAY */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+      backdrop-filter: blur(2px);
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #243b8f;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* NOTIFICATION */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px 25px;
+      border-radius: 8px;
+      color: white;
+      font-weight: 500;
+      z-index: 3000;
+      animation: slideInRight 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .notification.success {
+      background: #10b981;
+    }
+
+    .notification.error {
+      background: #ef4444;
+    }
+
+    .notification.warning {
+      background: #f59e0b;
+    }
+
+    .notification.info {
+      background: #3b82f6;
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* TAB SYNC INDICATOR */
+    .tab-sync-indicator {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      padding: 10px 20px;
+      border-radius: 30px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      z-index: 100;
+      animation: fadeInUp 0.5s ease;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        transform: translateY(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .sync-icon {
+      color: #10b981;
+      animation: spin 2s linear infinite;
+    }
+
+    /* RESPONSIVE */
+    @media(max-width:768px) {
+      .wrapper {
+        flex-direction: column;
+        padding: 15px;
+      }
+
+      .sidebar {
+        width: 100%;
+      }
+
+      .top-header {
+        flex-direction: column;
+        height: auto;
+        padding: 15px;
+        gap: 10px;
+      }
+
+      .header-right {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+    }
+
+    /* TIMETABLE ENHANCEMENTS - PREMIUM GRID */
+    #timetableGrid {
+      background: #f8fafc;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+
+    .tt-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      table-layout: fixed;
+    }
+
+    /* Sticky Headers */
+    .tt-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #f1f5f9;
+      color: #475569;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 15px 10px;
+      border-bottom: 2px solid #e2e8f0;
+      border-right: 1px solid #e2e8f0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .tt-time-col {
+      position: sticky;
+      left: 0;
+      z-index: 10;
+      background: #f8fafc;
+      width: 140px;
+      font-weight: 700;
+      color: #1e40af;
+      border-right: 2px solid #e2e8f0;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 15px;
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .tt-slot {
+      padding: 8px;
+      border-bottom: 1px solid #e2e8f0;
+      border-right: 1px solid #e2e8f0;
+      vertical-align: top;
+      background: #fff;
+      min-height: 120px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+
+    .tt-slot:hover {
+      background: #fdfdfd;
+      box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.1);
+    }
+
+    /* Drag and Drop Feedback */
+    .tt-slot.drag-over {
+      background: #eff6ff !important;
+      outline: 2px dashed #3b82f6 !important;
+      outline-offset: -4px;
+    }
+
+    .tt-slot.conflict {
+      background: #fff1f2 !important;
+      box-shadow: inset 0 0 0 2px #ef4444;
+    }
+
+    .tt-slot-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      height: 100%;
+    }
+
+    /* Premium Subject Cards */
+    .tt-slot-entry {
+      background: #fff;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+      border-left: 5px solid #3b82f6;
+      transition: all 0.2s ease;
+      position: relative;
+      cursor: grab;
+    }
+
+    .tt-slot-entry:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+    }
+
+    .tt-slot-entry:active {
+      cursor: grabbing;
+      box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+    }
+
+    .tt-slot-entry .sub-abbr {
+      display: block;
+      font-size: 14px;
+      font-weight: 800;
+      color: #1e293b;
+      margin-bottom: 4px;
+    }
+
+    .tt-slot-entry .fac-names {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: #64748b;
+      line-height: 1.2;
+    }
+
+    /* Type-based Colors */
+    .tt-slot-entry.theory {
+      border-left-color: #3b82f6;
+      background: #eff6ff;
+    }
+
+    .tt-slot-entry.lab {
+      border-left-color: #10b981;
+      background: #f0fdf4;
+    }
+
+    .tt-slot-entry.project {
+      border-left-color: #8b5cf6;
+      background: #faf5ff;
+    }
+
+    .tt-slot-entry.manual {
+      border-left-color: #f59e0b;
+      background: #fffbeb;
+      border-left-style: double;
+      border-left-width: 6px;
+      position: relative;
+    }
+
+    .manual-delete-btn {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      width: 20px;
+      height: 20px;
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+      border: none;
+      border-radius: 4px;
+      font-size: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: all 0.2s;
+      z-index: 10;
+    }
+
+    .tt-slot-entry.manual:hover .manual-delete-btn {
+      opacity: 1;
+    }
+
+    .manual-delete-btn:hover {
+      background: #ef4444;
+      color: white;
+    }
+
+    /* Parallel Groups - Side by Side */
+    .tt-parallel-container {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .tt-parallel-container .tt-slot-entry {
+      flex: 1 1 calc(50% - 6px);
+      min-width: 80px;
+    }
+
+    /* Manual Entry / Locked Visuals */
+    .tt-slot.locked {
+      background: #f8fafc;
+    }
+
+    .tt-lock-icon {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      font-size: 10px;
+      color: #94a3b8;
+    }
+
+    /* Empty Slot Design */
+    .tt-empty-placeholder {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      color: #cbd5e1;
+      font-size: 11px;
+      border: 2px dashed #f1f5f9;
+      border-radius: 8px;
+      gap: 5px;
+      opacity: 0.6;
+      transition: all 0.2s;
+    }
+
+    .tt-slot:hover .tt-empty-placeholder {
+      opacity: 1;
+      border-color: #e2e8f0;
+      color: #94a3b8;
+    }
+
+    /* Legend Section */
+    .tt-legend {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+      padding: 10px;
+      background: white;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #475569;
+      font-weight: 500;
+    }
+
+    .legend-color {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+    }
+
+    /* Legend Table Fixes */
+    .legend-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 30px;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      border: 1px solid #e2e8f0;
+    }
+
+    .legend-table th {
+      background: #f1f5f9;
+      color: #475569;
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      padding: 12px 15px;
+      text-align: left;
+    }
+
+    .legend-table td {
+      padding: 12px 15px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 13px;
+    }
+
+    /* Allocation Subject Cards */
+    .tt-available-subjects {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 600px;
+      overflow-y: auto;
+      padding: 5px;
+    }
+
+    .tt-available-subjects .tt-subject-card {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      border-left: 4px solid #cbd5e1;
+      cursor: grab;
+      transition: all 0.2s;
+    }
+
+    .tt-available-subjects .tt-subject-card:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .tt-available-subjects .tt-subject-card.theory {
+      border-left-color: #3b82f6;
+    }
+
+    .tt-available-subjects .tt-subject-card.lab {
+      border-left-color: #10b981;
+    }
+
+    .tt-available-subjects .tt-subject-card.project {
+      border-left-color: #8b5cf6;
+    }
+
+    /* Timeline enhancements */
+    .timeline-container {
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 transparent;
+    }
+
+    .timeline-slot {
+      border: 2px solid #fff;
+      transition: transform 0.2s;
+    }
+
+    .timeline-slot:hover {
+      transform: scale(1.05);
+      z-index: 5;
+    }
+
+    .tt-grid-container {
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      gap: 20px;
+    }
+
+    .tt-suggestion-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 8px;
+      margin-top: 5px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      font-size: 11px;
+      border-radius: 4px;
+    }
+
+    .tt-suggestion-btn:hover {
+      background: #dcfce7;
+    }
+
+    /* Timeline Slot Styles */
+    .timeline-container {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 15px;
+      background: #f1f5f9;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 1px dashed #cbd5e1;
+      align-items: center;
+    }
+
+    .timeline-slot {
+      flex: 0 0 auto;
+      background: white;
+      padding: 8px 15px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      text-align: center;
+      min-width: 120px;
+    }
+
+    .timeline-slot .slot-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+
+    .timeline-slot .slot-time {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1e40af;
+    }
+
+    .save-structure-btn {
+      background: #f8fafc;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+      padding: 8px 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .save-structure-btn:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+      color: #1e293b;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <!-- Notification Container -->
+  <div id="notificationContainer"></div>
+
+  <div class="top-header">
+    Admin Dashboard
+  </div>
+
+  <div class="wrapper">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <h2>Admin</h2>
+      <a href="#" onclick="showSection('pending', this); return false;" class="active sidebar-link">Pending Faculty</a>
+      <a href="#" onclick="showSection('approved', this); return false;" class="sidebar-link">Approved Faculty</a>
+      <a href="#" onclick="showSection('upload', this); return false;" class="sidebar-link">Upload Students</a>
+      <a href="manage-subjects.html" class="sidebar-link">Manage Subjects</a>
+      <a href="admin-preferences.html" class="sidebar-link">Faculty Preferences</a>
+      <a href="sorted-preferences.html" class="sidebar-link">Detailed Preferences</a>
+      <a href="admin-workload.html" class="sidebar-link">Manage Workload</a>
+      <a href="Timetable_rules.html" class="sidebar-link">Timetable Rules</a>
+      <a href="javascript:void(0);" onclick="showTimePreferences(event); return false;" class="sidebar-link"
+        id="timePrefsLink">Time Preferences</a>
+      <a href="#" onclick="showSection('timetableGen', this); return false;" class="sidebar-link">Timetable
+        Management</a>
+      <a href="#" onclick="showSection('absenceMonitoring', this); return false;" class="sidebar-link">Absence
+        Monitoring</a>
+      <a href="#" onclick="showSection('availabilityChecker', this); return false;" class="sidebar-link">Check Faculty
+        Availability</a>
+      <a href="#" onclick="showSection('substitution', this); return false;" class="sidebar-link">Substitution</a>
+      <div class="logout" onclick="logoutAdmin()"><i class="fas fa-sign-out-alt"></i> Logout</div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+      <!-- Session Warning -->
+      <div id="sessionWarning" class="session-warning" style="display: none;">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span id="sessionWarningMessage">Your session will expire soon. Please save your work.</span>
+      </div>
+
+      <div id="pending" class="section">
+        <h3><i class="fas fa-clock" style="color: #f59e0b;"></i> Pending Faculty Registrations</h3>
+        <table id="pendingFacultyTable">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Name</th>
+              <th>Department</th>
+              <th>Experience</th>
+              <th>Role</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div id="approved" class="section">
+        <h3><i class="fas fa-check-circle" style="color: #10b981;"></i> Approved Faculty</h3>
+        <table id="facultyTable">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Name</th>
+              <th>Department</th>
+              <th>Experience</th>
+              <th>Role</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div id="upload" class="section">
+        <h3><i class="fas fa-upload" style="color: #3b82f6;"></i> Upload Students</h3>
+        <div style="padding: 20px; background: #f8f9fa; border-radius: 10px;">
+          <div style="margin-bottom: 20px;">
+            <label for="uploadTypeSelector"
+              style="display: block; margin-bottom: 8px; color: #4b5563; font-weight: bold;"><i class="fas fa-list"></i>
+              Select Upload Type:</label>
+            <select id="uploadTypeSelector" onchange="toggleUploadType()"
+              style="width: 100%; max-width: 300px; padding: 10px; border: 1px solid #d1d5db; border-radius: 5px;">
+              <option value="single">Single File Upload</option>
+              <option value="odd">Odd Semester</option>
+              <option value="even">Even Semester</option>
+            </select>
+          </div>
+
+          <div id="singleUploadContainer">
+            <div style="margin-bottom: 15px;">
+              <label for="studentUploadInput" style="display: block; margin-bottom: 8px; color: #4b5563;"><i
+                  class="fas fa-file-excel"></i> Select Excel File:</label>
+              <input type="file" id="studentUploadInput" name="studentFile" accept=".xlsx,.xls"
+                style="margin-bottom: 10px;">
+            </div>
+            <button onclick="uploadExcel()" id="uploadButton" class="approve"><i class="fas fa-cloud-upload-alt"></i>
+              Upload Excel</button>
+            <div id="uploadedFile" style="margin-top: 15px;"></div>
+            <button onclick="removeFile()" id="removeBtn"
+              style="margin-top: 10px; background: #dc2626; color: white; display: none;"><i class="fas fa-trash"></i>
+              Remove File</button>
+          </div>
+
+          <!-- Dynamic Semester Upload -->
+          <div id="semesterUploadContainer" style="display: none;">
+            <div id="semesterDynamicInputs" style="display: flex; flex-direction: column; gap: 15px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="facultyPrefs" class="section">
+        <h3><i class="fas fa-clock" style="color: #8b5cf6;"></i> Faculty Time Preferences</h3>
+        <table id="facultyPrefsTable">
+          <thead>
+            <tr>
+              <th>Faculty</th>
+              <th>Time Preferences</th>
+              <th>Back-to-Back</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- TIMETABLE GENERATION SECTION (Enhanced) -->
+      <div id="timetableGen" class="section">
+        <h3><i class="fas fa-calendar-plus" style="color: #4ade80;"></i> Timetable Management</h3>
+
+        <div
+          style="background:#f8f9fa; padding:20px; border-radius:12px; margin-bottom:20px; border:1px solid #e2e8f0;">
+          <div
+            style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-bottom:15px;">
+            <div>
+              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Academic
+                Year</label>
+              <input type="text" id="ttAcademicYear" onchange="initializeEmptyGrid()" placeholder="e.g. 2024-2025"
+                style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+            </div>
+            <div>
+              <label
+                style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Term</label>
+              <select id="ttTerm" onchange="initializeEmptyGrid()"
+                style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+                <option value="Odd">Odd Semester</option>
+                <option value="Even">Even Semester</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Semester
+                Number</label>
+              <input type="number" id="ttSemester" onchange="initializeEmptyGrid()" placeholder="e.g. 1"
+                style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+            </div>
+            <div>
+              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Timetable
+                Slot Draft</label>
+              <div style="display: flex; gap: 8px;">
+                <select id="ttDraftId" onchange="loadTTDrafts()"
+                  style="flex: 1; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+                  <option value="">Use Global Rules</option>
+                </select>
+                <button onclick="saveCurrentStructureAsDraft()" class="save-structure-btn"
+                  title="Save current grid slots as a draft">
+                  <i class="fas fa-save"></i> Save Structure
+                </button>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button onclick="generateTimetable()" class="approve" style="flex:1; background:#0f172a;"><i
+                class="fas fa-magic"></i> Generate Timetable</button>
+            <button onclick="saveTimetable(true)" class="approve" style="flex:1; background:#8b5cf6;"><i
+                class="fas fa-save"></i> Save Draft</button>
+            <button onclick="deleteCurrentTimetable()" class="approve" style="flex:1; background:#ef4444;"><i
+                class="fas fa-trash"></i> Delete</button>
+          </div>
+        </div>
+
+        <div id="ttConflicts" class="tt-slot conflict"
+          style="display:none; padding:12px; border-radius:8px; margin-bottom:15px; font-size:13px; font-weight:500;">
+        </div>
+
+
+        <!-- NEW: Timeline Header Display -->
+        <h4 style="margin-bottom:10px; font-size:14px; color:#475569; display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-clock"></i> Timetable Timeline
+        </h4>
+        <div id="ttSlotTimeline" class="timeline-container">
+          <div style="color: #94a3b8; font-size: 13px; font-style: italic; width: 100%; text-align: center;">
+            Timeline structure will appear here once loaded.
+          </div>
+        </div>
+
+        <div class="tt-grid-container">
+          <!-- Left Panel: Allocation List -->
+          <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:15px;">
+            <h4 style="margin-bottom:12px; font-size:14px; color:#475569; display:flex; align-items:center; gap:8px;">
+              <i class="fas fa-list-ul"></i> Allocation List
+              <span id="ttRemainingHours"
+                style="margin-left:auto; font-size:11px; background:#f1f5f9; padding:2px 6px; border-radius:4px;">Drag &
+                Drop</span>
+            </h4>
+            <div id="ttAvailableSubjects" class="tt-available-subjects">
+              <div style="text-align:center; padding:20px; color:#94a3b8; font-style:italic; font-size:13px;">
+                Enter settings to load allocations.
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Panel: Grid -->
+          <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:15px; overflow-x:auto;">
+            <div id="timetableGrid">
+              <div style="text-align:center; padding:60px; color:#94a3b8;">
+                <i class="fas fa-calendar-alt fa-3x" style="margin-bottom:15px; opacity:0.3;"></i>
+                <p>Configure Academic Year and Semester to begin.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h4 style="margin-top:40px; margin-bottom:15px; color:#1e293b; display:flex; align-items:center; gap:10px;">
+          <i class="fas fa-history" style="color:#64748b;"></i> Saved Timetable Versions
+        </h4>
+        <table id="ttVersionsTable">
+          <thead>
+            <tr>
+              <th>Version Name</th>
+              <th>Year</th>
+              <th>Term</th>
+              <th>Sem</th>
+              <th>Status</th>
+              <th>Last Updated</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- FACULTY ABSENCE MONITORING -->
+      <div id="absenceMonitoring" class="section" style="display: none;">
+        <h3><i class="fas fa-calendar-times" style="color: #ef4444;"></i> Faculty Absence Monitoring</h3>
+        <div class="card" style="padding:0; overflow:hidden;">
+          <table id="absencesTable">
+            <thead>
+              <tr>
+                <th>Faculty Name</th>
+                <th>Date</th>
+                <th>Semester</th>
+                <th>Marked Time Slots</th>
+              </tr>
+            </thead>
+            <tbody id="absencesTableBody">
+              <tr>
+                <td colspan="4" class="no-data">Loading absences...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- FACULTY AVAILABILITY CHECKER -->
+      <div id="availabilityChecker" class="section" style="display: none;">
+        <h3><i class="fas fa-user-check" style="color: #10b981;"></i> Check Faculty Availability</h3>
+        <div class="card" style="margin-bottom: 20px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 15px;">
+            <div class="form-group">
+              <label>Select Date</label>
+              <input type="date" id="checkDate"
+                style="width:100%; border-radius:8px; border:1px solid #cbd5e1; padding:8px;">
+            </div>
+            <div class="form-group">
+              <label>Select Time Slot</label>
+              <select id="checkSlot" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; padding:8px;">
+                <option value="">-- Loading time slots... --</option>
+              </select>
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+              <button onclick="checkFacultyAvailability()" class="approve" style="width:100%; margin:0;">Check
+                Availability</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="availabilityResults" style="display: none;">
+          <h4>Available Faculty Members</h4>
+          <div class="card" style="padding:0; overflow:hidden;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Faculty ID</th>
+                  <th>Faculty Name</th>
+                  <th>Designation</th>
+                  <th>Department</th>
+                </tr>
+              </thead>
+              <tbody id="availableFacultyTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBSTITUTION (EXTENSION) -->
+      <div id="substitution" class="section" style="display: none;">
+        <h3><i class="fas fa-exchange-alt" style="color:#3b82f6;"></i> Faculty Substitution</h3>
+
+        <div class="card" style="padding:0; overflow:hidden; margin-bottom: 16px;">
+          <table id="subAbsencesTable">
+            <thead>
+              <tr>
+                <th>Faculty Name</th>
+                <th>Date</th>
+                <th>Time Slots</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="subAbsencesTableBody">
+              <tr>
+                <td colspan="4" class="no-data">Loading absences...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="freeFacultyPanel" style="display:none;">
+          <h4 style="margin-bottom:10px; color:#1e293b;">Free Faculty</h4>
+          <div class="card" style="padding:0; overflow:hidden;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Faculty ID</th>
+                  <th>Name</th>
+                  <th>Department</th>
+                  <th>Email</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="freeFacultyTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Single bulk request button (no per-faculty buttons) -->
+        <div
+          style="margin-top:12px; display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin-bottom: 24px;">
+          <input type="datetime-local" id="deadlineInput"
+            style="padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; display:none;">
+          <button id="sendAllSubstitutionBtn" class="approve" style="display:none;"
+            onclick="sendSubstitutionRequestToAll()">
+            <i class="fas fa-paper-plane"></i> Send Request
+          </button>
+        </div>
+
+        <div id="substitutionHistoryContainer">
+          <h4 style="margin-bottom:10px; color:#1e293b;"><i class="fas fa-history"></i> Substitution Request History
+          </h4>
+          <div class="card" style="padding:0; overflow:hidden;">
+            <table id="subHistoryTable">
+              <thead>
+                <tr>
+                  <th>Absent Faculty</th>
+                  <th>Date</th>
+                  <th>Time Slot</th>
+                  <th>Assigned Faculty</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="subHistoryTableBody">
+                <tr>
+                  <td colspan="5" class="no-data">Loading history...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <div id="facultyRejectionModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fas fa-times-circle" style="color: #dc2626;"></i> Reject Faculty Registration</h3>
+        <button class="close-btn" onclick="closeFacultyRejectionModal()">×</button>
+      </div>
+      <textarea id="facultyRejectionReason"
+        placeholder="Enter reason for rejecting this faculty registration..."></textarea>
+      <div class="modal-actions">
+        <button onclick="closeFacultyRejectionModal()" style="background:#6b7280; color:white;"><i
+            class="fas fa-times"></i> Cancel</button>
+        <button onclick="submitFacultyRejection()" style="background:#dc2626; color:white;"><i class="fas fa-check"></i>
+          Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="preferenceRejectionModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fas fa-times-circle" style="color: #dc2626;"></i> Reject Preferences</h3>
+        <button class="close-btn" onclick="closePreferenceRejectionModal()">×</button>
+      </div>
+      <textarea id="preferenceRejectionReason" placeholder="Enter reason for rejection..."></textarea>
+      <div class="modal-actions">
+        <button onclick="closePreferenceRejectionModal()" style="background:#6b7280; color:white;"><i
+            class="fas fa-times"></i> Cancel</button>
+        <button onclick="submitPreferenceRejection()" style="background:#dc2626; color:white;"><i
+            class="fas fa-check"></i> Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="manualEntryModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 400px; padding: 0;">
+      <div class="modal-header" style="background: #3b82f6; color: white;">
+        <h3><i class="fas fa-plus-circle"></i> Add Manual Subject</h3>
+        <button class="close-btn" onclick="closeManualEntryModal()" style="color: white;">×</button>
+      </div>
+      <div style="padding: 20px; display: flex; flex-direction: column; gap: 15px;">
+        <input type="hidden" id="manualSlotDay">
+        <input type="hidden" id="manualSlotTime">
+
+        <div class="form-group">
+          <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Subject
+            Name</label>
+          <input type="text" id="manualSubName" placeholder="e.g. Workshop Practice"
+            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+        </div>
+
+        <div class="form-group">
+          <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Subject Code
+            / Abbreviation</label>
+          <input type="text" id="manualSubAbbr" placeholder="e.g. WP101"
+            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+        </div>
+
+        <div class="form-group">
+          <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Faculty
+            Name</label>
+          <input type="text" id="manualFacName" placeholder="e.g. Mr. X (External)"
+            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+        </div>
+      </div>
+      <div class="modal-actions"
+        style="padding: 15px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; justify-content: flex-end;">
+        <button onclick="closeManualEntryModal()" style="background:#64748b; color:white; margin:0;"><i
+            class="fas fa-times"></i> Cancel</button>
+        <button onclick="saveManualEntry()" style="background:#3b82f6; color:white; margin:0;"><i
+            class="fas fa-save"></i> Save Entry</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sync Indicator -->
+  <div class="tab-sync-indicator" id="tabSyncIndicator" style="display: none;">
+    <i class="fas fa-sync-alt sync-icon"></i>
+    <span id="syncMessage">Synchronizing with other tabs...</span>
+  </div>
+
+
+
+  <script>
+    // ================== GLOBAL VARIABLES ==================
+    let rejectPendingFacultyId = null;
+    let rejectPreferenceFacultyId = null;
+    let activeTabs = 1;
+    let sessionCheckInterval = null;
+    let lastActivityTime = Date.now();
+    let timetableData = [];
+    let allocatedSubjects = [];
+
+    // ================== SESSION MANAGEMENT ==================
+
+    // Validate session on page load
+    (function () {
+      const session = SessionManager.getSession();
+
+      if (!session || session.role !== "admin") {
+        SessionManager.forceLogout("Unauthorized access");
+      }
+
+      else {
+        // Update session activity
+        updateSessionActivity();
+
+        // Start session monitoring
+        startSessionMonitoring();
+
+        // Track tab count
+        updateTabCount();
+      }
+    })();
+
+    // Update session activity
+    function updateSessionActivity() {
+      lastActivityTime = Date.now();
+      const session = SessionManager.getSession();
+
+      if (session) {
+        session.lastActivity = lastActivityTime;
+        localStorage.setItem(SessionManager.SESSION_KEY, JSON.stringify(session));
+      }
+    }
+
+    // Start session monitoring
+    function startSessionMonitoring() {
+
+      // Check session every minute
+      sessionCheckInterval = setInterval(() => {
+        const session = SessionManager.getSession();
+
+        if (!session) {
+          // Session was cleared in another tab
+          showNotification("Session ended in another tab", "warning");
+
+          setTimeout(() => {
+            window.location.href = "index.html";
+          }
+
+            , 2000);
+        }
+
+        else {
+          // Check for inactivity (30 minutes)
+          const inactivityPeriod = Date.now() - lastActivityTime;
+          const WARNING_TIME = 25 * 60 * 1000; // 25 minutes
+          const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+          if (inactivityPeriod > SESSION_TIMEOUT) {
+            // Session timeout due to inactivity
+            SessionManager.forceLogout("Session expired due to inactivity");
+          }
+
+          else if (inactivityPeriod > WARNING_TIME) {
+
+            // Show warning
+            showSessionWarning(`Your session will expire in ${Math.ceil((SESSION_TIMEOUT - inactivityPeriod) / 60000)} minutes due to inactivity.`);
+          }
+        }
+      }
+
+        , 60000);
+
+      // Track user activity
+      ['click',
+        'keypress',
+        'scroll',
+        'mousemove'].forEach(event => {
+          document.addEventListener(event, updateSessionActivity);
+        });
+    }
+
+    // Show session warning
+    function showSessionWarning(message) {
+      const warningDiv = document.getElementById('sessionWarning');
+      const warningMsg = document.getElementById('sessionWarningMessage');
+      warningMsg.textContent = message;
+      warningDiv.style.display = 'flex';
+
+      // Auto-hide after 10 seconds
+      setTimeout(() => {
+        warningDiv.style.display = 'none';
+      }
+
+        , 10000);
+    }
+
+    // Update tab count
+    function updateTabCount() {
+      // Generate unique tab ID if not exists
+      let tabId = sessionStorage.getItem('admin_tab_id');
+
+      if (!tabId) {
+        tabId = 'tab_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        sessionStorage.setItem('admin_tab_id', tabId);
+      }
+
+      // Track active tabs
+      const tabs = JSON.parse(localStorage.getItem('admin_active_tabs') || '{}');
+      tabs[tabId] = Date.now();
+
+      // Clean up old tabs (inactive for more than 10 seconds)
+      const now = Date.now();
+
+      Object.keys(tabs).forEach(key => {
+        if (now - tabs[key] > 10000) {
+          delete tabs[key];
+        }
+      });
+
+      localStorage.setItem('admin_active_tabs', JSON.stringify(tabs));
+
+      // Update UI
+      activeTabs = Object.keys(tabs).length;
+      const tabCountEl = document.getElementById('tabCount');
+      if (tabCountEl) {
+        tabCountEl.textContent = activeTabs;
+      }
+
+      // Show sync indicator if multiple tabs
+      const syncIndicator = document.getElementById('tabSyncIndicator');
+
+      if (activeTabs > 1) {
+        if (syncIndicator) syncIndicator.style.display = 'flex';
+
+        const syncMessageEl = document.getElementById('syncMessage');
+        if (syncMessageEl) {
+          syncMessageEl.textContent = `${activeTabs} tabs synchronized`;
+        }
+
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+          if (syncIndicator) syncIndicator.style.display = 'none';
+        }, 3000);
+      } else {
+        if (syncIndicator) syncIndicator.style.display = 'none';
+      }
+
+      // Update tab count every 5 seconds
+      setTimeout(updateTabCount, 5000);
+    }
+
+    // Show notification
+    function showNotification(message, type = 'info') {
+      const container = document.getElementById('notificationContainer');
+      const notification = document.createElement('div');
+
+      notification.className = `notification ${type}`;
+      notification.innerHTML = ` <i class="fas ${type === 'success' ? 'fa-check-circle' :
+        type === 'error' ? 'fa-exclamation-circle' : type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle'
+        } "></i> ${message} `;
+
+      container.appendChild(notification);
+
+      // Remove after 3 seconds
+      setTimeout(() => {
+        notification.style.animation = 'slideOutRight 0.3s ease';
+
+        setTimeout(() => {
+          notification.remove();
+        }
+
+          , 300);
+      }
+
+        , 3000);
+    }
+
+    // Show loading overlay
+    function showLoading() {
+      document.getElementById('loadingOverlay').style.display = 'flex';
+    }
+
+    // Hide loading overlay
+    function hideLoading() {
+      document.getElementById('loadingOverlay').style.display = 'none';
+    }
+
+    // ================== SECTION MANAGEMENT ==================
+
+    // Initialize active section based on URL or saved state
+    function initializeActiveSection() {
+      console.log("Initializing active section...");
+
+      // Check URL parameter first
+      const params = new URLSearchParams(window.location.search);
+      const urlSection = params.get('section');
+
+      // If URL has a section parameter, use it
+      if (urlSection) {
+        console.log("Initializing from URL:", urlSection);
+        const link = document.querySelector(`.sidebar a[onclick*="'${urlSection}'"], .sidebar a[href*="${urlSection}"]`);
+        showSection(urlSection, link);
+        return;
+      }
+
+      // Check if there's a saved section in sessionStorage
+      const savedSection = sessionStorage.getItem('admin_active_section');
+
+      if (savedSection) {
+        console.log("Initializing from saved section:", savedSection);
+        const link = document.querySelector(`.sidebar a[onclick*="'${savedSection}'"], .sidebar a[href*="${savedSection}"]`);
+        showSection(savedSection, link);
+        return;
+      }
+
+      // Default to pending
+      console.log("Initializing to default section: pending");
+      const defaultLink = document.querySelector(`.sidebar a[onclick*="'pending'"]`);
+      showSection('pending', defaultLink);
+    }
+
+    // Main function to show sections
+    function showSection(sectionId, clickedElement = null) {
+      console.log("Showing section:", sectionId);
+
+      // Validate section exists
+      const targetSection = document.getElementById(sectionId);
+
+      if (!targetSection) {
+        console.error("Section not found:", sectionId);
+        return;
+      }
+
+      // Save active section to sessionStorage
+      sessionStorage.setItem('admin_active_section', sectionId);
+
+      // Update last activity
+      updateSessionActivity();
+
+      // Hide all sections
+      document.querySelectorAll(".section").forEach(sec => {
+        sec.style.display = "none";
+      });
+
+      // Show the selected section
+      targetSection.style.display = "block";
+      console.log("Section found and displayed:", sectionId);
+
+      // Update active link in sidebar
+      document.querySelectorAll(".sidebar a").forEach(link => {
+        link.classList.remove("active");
+      });
+
+      if (clickedElement) {
+        clickedElement.classList.add("active");
+        console.log("Activated clicked element:", clickedElement);
+      }
+
+      else {
+        // If no clicked element, try to find the link based on sectionId
+        const links = document.querySelectorAll(".sidebar a");
+
+        links.forEach(link => {
+          if (link.getAttribute('onclick') && link.getAttribute('onclick').includes(`'${sectionId}' `)) {
+            link.classList.add("active");
+            console.log("Activated link by section ID:", link);
+          }
+
+          else if (link.id === 'timePrefsLink' && sectionId === 'facultyPrefs') {
+            link.classList.add("active");
+            console.log("Activated Time Preferences link");
+          }
+        });
+      }
+
+      // Update URL without reloading page
+      const url = new URL(window.location);
+      url.searchParams.set('section', sectionId);
+
+      window.history.pushState({}
+
+        , '', url);
+
+      // Load section-specific data
+      loadSectionData(sectionId);
+    }
+
+    // Special function for Time Preferences
+    function showTimePreferences(event) {
+      console.log("Time Preferences clicked - showing facultyPrefs section");
+
+      // Prevent default behavior
+      if (event) {
+        event.preventDefault();
+      }
+
+      // Get the clicked element
+      const clickedElement = event ? event.currentTarget : document.getElementById('timePrefsLink');
+
+      // Call the main showSection function
+      showSection('facultyPrefs', clickedElement);
+
+      return false;
+    }
+
+    // Load data for the selected section
+    function loadSectionData(sectionId) {
+      showLoading();
+
+      switch (sectionId) {
+        case 'pending':
+          fetchPendingFaculty();
+          break;
+        case 'approved':
+          fetchApprovedFaculty();
+          break;
+        case 'upload':
+          checkUploadedFile();
+          break;
+        case 'facultyPrefs':
+          fetchFacultyPreferences();
+          break;
+        case 'absenceMonitoring':
+          fetchAbsences();
+          break;
+        case 'availabilityChecker':
+          loadAvailabilitySlots();
+          hideLoading();
+          break;
+        case 'substitution':
+          fetchSubstitutionAbsences();
+          break;
+        case 'timetableGen':
+          loadTimetableGenData();
+          break;
+        default:
+          console.log("No data loading function for section:", sectionId);
+          setTimeout(hideLoading, 500);
+          break;
+      }
+
+      // Hide loading after data is loaded (or timeout)
+      setTimeout(hideLoading, 1000);
+    }
+
+    // DOMContentLoaded event listener
+    document.addEventListener('DOMContentLoaded', function () {
+      console.log("DOM fully loaded");
+
+      // Initialize file input
+      const fInput = document.getElementById("studentUploadInput");
+      const uButton = document.getElementById("uploadButton");
+
+      if (fInput && uButton) {
+        fInput.addEventListener("change", function () {
+          const hasFile = this.files && this.files.length > 0;
+          uButton.disabled = !hasFile;
+          uButton.style.opacity = hasFile ? "1" : "0.5";
+          console.log("Student file selected:", hasFile ? this.files[0].name : "none");
+          updateSessionActivity();
+        });
+      }
+
+      // Warn admin if Sunday is selected in availability checker
+      const checkDateInput = document.getElementById('checkDate');
+      if (checkDateInput) {
+        checkDateInput.addEventListener('change', function () {
+          if (this.value) {
+            const date = new Date(this.value);
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            if (days[date.getDay()] === 'Sunday') {
+              showNotification("Sunday is not a working day.", "info");
+            }
+          }
+        });
+      }
+
+      // Add extra click handler for Time Preferences link
+      const timePrefsLink = document.getElementById('timePrefsLink');
+
+      if (timePrefsLink) {
+        timePrefsLink.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log("Time Preferences click handler - direct");
+          showTimePreferences(e);
+        });
+      }
+
+      // Listen for data updates from other tabs
+      window.addEventListener('storage', function (e) {
+        if (e.key === 'admin_data_update') {
+          // Refresh current section data
+          const params = new URLSearchParams(window.location.search);
+          const section = params.get('section') || 'pending';
+          loadSectionData(section);
+        }
+      });
+
+      // Initialize the active section
+      setTimeout(() => {
+        initializeActiveSection();
+      }
+
+        , 100);
+    });
+
+    // Handle browser back/forward navigation
+    window.addEventListener('popstate', function () {
+      const params = new URLSearchParams(window.location.search);
+      const section = params.get('section') || 'pending';
+
+      console.log("Navigation to section:", section);
+
+      // Find the corresponding sidebar link
+      let activeLink = null;
+
+      document.querySelectorAll('.sidebar a').forEach(link => {
+        if (link.getAttribute('onclick') && link.getAttribute('onclick').includes(`'${section}' `)) {
+          activeLink = link;
+        }
+
+        else if (link.id === 'timePrefsLink' && section === 'facultyPrefs') {
+          activeLink = link;
+        }
+      });
+
+      showSection(section, activeLink);
+    });
+
+    // ================== LOGOUT ==================
+    function logoutAdmin() {
+      if (confirm("Are you sure you want to logout?")) {
+        showLoading();
+
+        // Remove this tab from active tabs
+        const tabId = sessionStorage.getItem('admin_tab_id');
+
+        if (tabId) {
+          const tabs = JSON.parse(localStorage.getItem('admin_active_tabs') || '{}');
+          delete tabs[tabId];
+          localStorage.setItem('admin_active_tabs', JSON.stringify(tabs));
+        }
+
+        // Clear session monitoring
+        if (sessionCheckInterval) {
+          clearInterval(sessionCheckInterval);
+        }
+
+        // Force logout using session manager
+        SessionManager.forceLogout("Logged out successfully");
+      }
+    }
+
+    // ================== PENDING FACULTY ==================
+    async function fetchPendingFaculty() {
+      try {
+        const res = await fetch("/admin/pending-faculty");
+        const data = await res.json();
+        const table = document.querySelector("#pendingFacultyTable tbody");
+
+        if (!table) return;
+
+        table.innerHTML = "";
+
+        if (data.faculty && data.faculty.length > 0) {
+          data.faculty.forEach(f => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${f.username || ''}</td>
+              <td>${f.name || ''}</td>
+              <td>${f.department || ''}</td>
+              <td>${f.experience || ''}</td>
+              <td>${f.role || ''}</td>
+              <td>
+                <div class="action-buttons">
+                  <button class="approve" onclick="approveFaculty('${f._id}')"><i class="fas fa-check"></i> Approve</button>
+                  <button class="reject" onclick="openFacultyRejectionModal('${f._id}')"><i class="fas fa-times"></i> Reject</button>
+                </div>
+              </td>
+            `;
+            table.appendChild(tr);
+          });
+        }
+
+        else {
+          table.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px;"><i class="fas fa-inbox" style="font-size: 40px; color: #9ca3af; margin-bottom: 10px;"></i><br>No pending faculty found </td></tr>`;
+        }
+      }
+
+      catch (error) {
+        console.error("Error fetching pending faculty:", error);
+        const table = document.querySelector("#pendingFacultyTable tbody");
+
+        if (table) {
+          table.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#dc2626;"><i class="fas fa-exclamation-circle"></i>Error loading data </td></tr>`;
+        }
+      }
+    }
+
+    async function approveFaculty(facultyId) {
+      if (!confirm("Approve this faculty?")) return;
+
+      showLoading();
+      updateSessionActivity();
+
+      try {
+        const res = await fetch("/admin/approve-faculty", {
+
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          }
+
+          ,
+          body: JSON.stringify({
+            facultyId
+          })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification("Faculty approved successfully!", "success");
+          fetchPendingFaculty();
+
+          // Notify other tabs
+          localStorage.setItem('admin_data_update', Date.now().toString());
+        }
+
+        else {
+          showNotification("Error approving faculty", "error");
+        }
+      }
+
+      catch (error) {
+        console.error("Error approving faculty:", error);
+        showNotification("Error approving faculty", "error");
+      }
+
+      finally {
+        hideLoading();
+      }
+    }
+
+    // Faculty Rejection Functions
+    function openFacultyRejectionModal(facultyId) {
+      rejectPendingFacultyId = facultyId;
+      document.getElementById("facultyRejectionModal").style.display = "flex";
+      document.getElementById("facultyRejectionReason").value = "";
+      updateSessionActivity();
+    }
+
+    function closeFacultyRejectionModal() {
+      rejectPendingFacultyId = null;
+      document.getElementById("facultyRejectionModal").style.display = "none";
+      document.getElementById("facultyRejectionReason").value = "";
+    }
+
+    async function submitFacultyRejection() {
+      const reason = document.getElementById("facultyRejectionReason").value.trim();
+
+      if (!reason) {
+        showNotification("Please enter a reason for rejection", "warning");
+        return;
+      }
+
+      showLoading();
+
+      try {
+        const res = await fetch("/admin/reject-faculty", {
+
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          }
+
+          ,
+          body: JSON.stringify({
+            facultyId: rejectPendingFacultyId,
+            reason: reason
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification("Faculty registration rejected successfully", "success");
+          closeFacultyRejectionModal();
+          fetchPendingFaculty();
+
+          // Notify other tabs
+          localStorage.setItem('admin_data_update', Date.now().toString());
+        }
+
+        else {
+          showNotification("Error rejecting faculty: " + (data.message || "Unknown error"), "error");
+        }
+      }
+
+      catch (error) {
+        console.error("Error rejecting faculty:", error);
+        showNotification("Server error while rejecting faculty", "error");
+      }
+
+      finally {
+        hideLoading();
+      }
+    }
+
+    // ================== APPROVED FACULTY ==================
+    async function fetchApprovedFaculty() {
+      try {
+        const res = await fetch("/admin/approved-faculty");
+        const data = await res.json();
+        const table = document.querySelector("#facultyTable tbody");
+
+        if (!table) return;
+
+        table.innerHTML = "";
+
+        if (data.faculty && data.faculty.length > 0) {
+          data.faculty.forEach(f => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${f.username || ''}</td>
+              <td>${f.name || ''}</td>
+              <td>${f.department || ''}</td>
+              <td>${f.experience || ''}</td>
+              <td>${f.role || ''}</td>
+              <td><button class="lock" onclick="removeFaculty('${f._id}')"><i class="fas fa-trash"></i> Remove</button></td>
+            `;
+            table.appendChild(tr);
+          });
+        }
+
+        else {
+          table.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px;"><i class="fas fa-users" style="font-size: 40px; color: #9ca3af; margin-bottom: 10px;"></i><br>No approved faculty found </td></tr>`;
+        }
+      }
+
+      catch (error) {
+        console.error("Error fetching approved faculty:", error);
+        const table = document.querySelector("#facultyTable tbody");
+
+        if (table) {
+          table.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#dc2626;"><i class="fas fa-exclamation-circle"></i>Error loading data </td></tr>`;
+        }
+      }
+    }
+
+    async function removeFaculty(facultyId) {
+      if (!confirm("Are you sure you want to remove this faculty?")) return;
+
+      showLoading();
+      updateSessionActivity();
+
+      try {
+        const res = await fetch("/admin/remove-faculty", {
+
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          }
+
+          ,
+          body: JSON.stringify({
+            facultyId
+          })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification("Faculty removed successfully!", "success");
+          fetchApprovedFaculty();
+
+          // Notify other tabs
+          localStorage.setItem('admin_data_update', Date.now().toString());
+        }
+
+        else {
+          showNotification("Error removing faculty", "error");
+        }
+      }
+
+      catch (error) {
+        console.error("Error removing faculty:", error);
+        showNotification("Error removing faculty", "error");
+      }
+
+      finally {
+        hideLoading();
+      }
+    }
+
+
+    // ================== UPLOAD STUDENTS ==================
+
+    function toggleUploadType() {
+      const type = document.getElementById("uploadTypeSelector").value;
+      const singleContainer = document.getElementById("singleUploadContainer");
+      const semesterContainer = document.getElementById("semesterUploadContainer");
+      const dynamicInputs = document.getElementById("semesterDynamicInputs");
+
+      if (type === "single") {
+        singleContainer.style.display = "block";
+        semesterContainer.style.display = "none";
+      } else {
+        singleContainer.style.display = "none";
+        semesterContainer.style.display = "block";
+
+        dynamicInputs.innerHTML = ""; // Clear existing
+        const semesters = type === "odd" ? [1, 3, 5, 7] : [2, 4, 6, 8];
+        const semTypeLabel = type === "odd" ? "Odd" : "Even";
+
+        semesters.forEach(sem => {
+          const row = document.createElement("div");
+          row.style.cssText = "padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background: #ffffff; display: flex; flex-direction: column; gap: 10px;";
+          row.innerHTML = `
+            <h4 style="margin: 0; color: #1f2937; font-size: 16px;"><i class="fas fa-graduation-cap"></i> Semester ${sem}</h4>
+            <div>
+              <input type="file" id="studentUploadInput_${sem}" accept=".xlsx,.xls" style="margin-bottom: 10px;">
+            </div>
+            <div>
+              <button onclick="uploadSemesterExcel(${sem}, '${semTypeLabel}', 'studentUploadInput_${sem}')" class="approve" style="padding: 8px 15px; font-size: 14px;"><i class="fas fa-cloud-upload-alt"></i> Upload Sem ${sem}</button>
+            </div>
+            <div id="uploadedFile_${sem}"></div>
+          `;
+          dynamicInputs.appendChild(row);
+        });
+
+        // Re-check files after rendering dynamic inputs to setup disabled states
+        checkUploadedFile();
+      }
+    }
+
+    async function uploadSemesterExcel(semester, semesterType, inputId) {
+      const fInput = document.getElementById(inputId);
+
+      if (!fInput || !fInput.files || fInput.files.length === 0) {
+        showNotification("Choose file first for Semester " + semester, "warning");
+        return;
+      }
+
+      showLoading();
+      updateSessionActivity();
+
+      try {
+        const formData = new FormData();
+        formData.append("file", fInput.files[0]);
+        formData.append("semester", semester);
+        formData.append("semesterType", semesterType);
+
+        const res = await fetch("/admin/upload-students", {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification(data.message || `Upload successful for Semester ${semester}!`, "success");
+          fInput.value = ""; // Clear input after success
+          checkUploadedFile();
+          localStorage.setItem('admin_data_update', Date.now().toString());
+        } else {
+          showNotification(data.message || `Upload failed for Semester ${semester}`, "error");
+        }
+      } catch (error) {
+        console.error("Error uploading file:", error);
+        showNotification("Error uploading file", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function uploadExcel() {
+      const fInput = document.getElementById("studentUploadInput");
+      console.log("Upload button clicked. Input element:", fInput);
+
+      if (!fInput) {
+        showNotification("Upload input not found!", "error");
+        return;
+      }
+
+      console.log("Files available:", fInput.files ? fInput.files.length : "undefined");
+
+      if (!fInput.files || fInput.files.length === 0) {
+        showNotification("Choose file first", "warning");
+        return;
+      }
+
+      showLoading();
+      updateSessionActivity();
+
+      try {
+        const formData = new FormData();
+        formData.append("file", fInput.files[0]);
+
+        const res = await fetch("/admin/upload-students", {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification(data.message || "Upload successful!", "success");
+          checkUploadedFile();
+
+          // Notify other tabs
+          localStorage.setItem('admin_data_update', Date.now().toString());
+        }
+
+        else {
+          showNotification(data.message || "Upload failed", "error");
+        }
+      }
+
+      catch (error) {
+        console.error("Error uploading file:", error);
+        showNotification("Error uploading file", "error");
+      }
+
+      finally {
+        hideLoading();
+      }
+    }
+
+    async function removeFile(key = 'student_file_info') {
+      if (!confirm("Remove the uploaded file?")) return;
+
+      showLoading();
+      updateSessionActivity();
+
+      try {
+        const res = await fetch("/admin/remove-student-file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification(data.message || "File removed!", "success");
+
+          if (key === 'student_file_info') {
+            const fInput = document.getElementById("studentUploadInput");
+            if (fInput) fInput.value = "";
+          } else {
+            const semMatch = key.match(/sem_(\d+)/);
+            if (semMatch) {
+              const semInput = document.getElementById(`studentUploadInput_${semMatch[1]}`);
+              if (semInput) semInput.value = "";
+            }
+          }
+          checkUploadedFile();
+
+          // Notify other tabs
+          localStorage.setItem('admin_data_update', Date.now().toString());
+        }
+
+        else {
+          showNotification(data.message || "Error removing file", "error");
+        }
+      }
+
+      catch (error) {
+        console.error("Error removing file:", error);
+        showNotification("Error removing file", "error");
+      }
+
+      finally {
+        hideLoading();
+      }
+    }
+
+    async function checkUploadedFile() {
+      try {
+        const res = await fetch("/admin/check-student-file");
+        const data = await res.json();
+
+        // 1. Reset Single Upload UI
+        const singleFInput = document.getElementById("studentUploadInput");
+        const singleRemoveBtn = document.getElementById("removeBtn");
+        const singleUploadedFileDiv = document.getElementById("uploadedFile");
+
+        if (singleFInput) singleFInput.disabled = false;
+        if (singleRemoveBtn) {
+          singleRemoveBtn.style.display = "none";
+          singleRemoveBtn.onclick = () => removeFile('student_file_info');
+        }
+        if (singleUploadedFileDiv) singleUploadedFileDiv.innerHTML = "";
+
+        // 2. Reset Semester-specific UIs safely
+        for (let sem = 1; sem <= 8; sem++) {
+          const semInput = document.getElementById(`studentUploadInput_${sem}`);
+          const semBtn = document.querySelector(`button[onclick*="uploadSemesterExcel(${sem}"]`);
+          const semUploadedFileDiv = document.getElementById(`uploadedFile_${sem}`);
+
+          if (semInput) semInput.disabled = false;
+          if (semBtn) semBtn.disabled = false;
+          if (semUploadedFileDiv) semUploadedFileDiv.innerHTML = "";
+        }
+
+        if (!data.exists || !data.files) return;
+
+        // 3. Process backend state Array
+        data.files.forEach(file => {
+          if (file.key === 'student_file_info') {
+            if (singleFInput) singleFInput.disabled = true;
+            if (singleRemoveBtn) {
+              singleRemoveBtn.style.display = "inline-flex";
+              singleRemoveBtn.disabled = false;
+              singleRemoveBtn.onclick = () => removeFile(file.key);
+            }
+            if (singleUploadedFileDiv) {
+              singleUploadedFileDiv.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px; background:#e8f5e8; padding:10px; border-radius:5px; border: 1px solid #16a34a;">
+                  <i class="fas fa-check-circle" style="color:#16a34a; font-size: 20px;"></i>
+                  <div style="flex:1;">
+                    <strong style="color: #16a34a; display: block;">File Present</strong>
+                    <span style="font-size: 13px; color: #4b5563;">${file.fileName || 'Student Data'}</span>
+                  </div>
+                  <span onclick="removeFile('${file.key}')" title="Remove File" style="cursor:pointer; color:#dc2626; font-size: 22px; padding: 0 5px;">&times;</span>
+                </div>`;
+            }
+          } else if (file.semester) {
+            const sem = file.semester;
+            const semInput = document.getElementById(`studentUploadInput_${sem}`);
+            const semBtn = document.querySelector(`button[onclick*="uploadSemesterExcel(${sem}"]`);
+            const semUploadedFileDiv = document.getElementById(`uploadedFile_${sem}`);
+
+            if (semInput) semInput.disabled = true;
+            if (semBtn) semBtn.disabled = true;
+
+            if (semUploadedFileDiv) {
+              semUploadedFileDiv.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px; background:#e8f5e8; padding:10px; border-radius:5px; border: 1px solid #16a34a; margin-top: 10px;">
+                  <i class="fas fa-check-circle" style="color:#16a34a; font-size: 20px;"></i>
+                  <div style="flex:1;">
+                    <strong style="color: #16a34a; display: block;">Uploaded File</strong>
+                    <span style="font-size: 13px; color: #4b5563;">${file.fileName || 'Student Data'}</span>
+                  </div>
+                  <span onclick="removeFile('${file.key}')" title="Remove File" style="cursor:pointer; color:#dc2626; font-size: 22px; padding: 0 5px;">&times;</span>
+                </div>`;
+            }
+          }
+        });
+
+      } catch (error) {
+        console.error("Error checking uploaded file:", error);
+      }
+    }
+
+    // ================== FACULTY TIME PREFERENCES ==================
+    async function fetchFacultyPreferences() {
+      const table = document.querySelector("#facultyPrefsTable tbody");
+      if (!table) return;
+
+      table.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;"><div class="loading-spinner" style="margin: 20px auto;"></div>Loading...</td></tr>`;
+
+      try {
+        const res = await fetch("/admin/faculty-preferences");
+        const data = await res.json();
+        table.innerHTML = "";
+
+        // Filter faculty to only those with non‑empty time preferences
+        const facultyWithPrefs = data.faculty?.filter(f =>
+          f.timePreferences && Array.isArray(f.timePreferences) && f.timePreferences.length > 0
+        ) || [];
+
+        if (facultyWithPrefs.length > 0) {
+          facultyWithPrefs.forEach(f => {
+            let times = "—";
+            if (Array.isArray(f.timePreferences) && f.timePreferences.length) {
+              times = f.timePreferences.map(p => {
+                const day = p.day || "";
+                const time = p.time || "";
+                const reason = p.reason || "";
+                return `<div style="margin-bottom: 5px;">📅 ${day}: ${time}${reason ? `<br><small>Reason: ${reason}</small>` : ""}</div>`;
+              }).join("");
+            }
+
+            const status = f.preferenceStatus || "pending";
+            const statusColor = status === "approved" ? "#4ade80" : status === "rejected" ? "#f87171" : "#fbbf24";
+
+            const row = document.createElement("tr");
+            row.innerHTML = `
+          <td><strong>${f.name || ''}</strong><br><small style="color: #6b7280;">${f.username || ''}</small></td>
+          <td style="text-align: left;">${times}</td>
+          <td>${f.canTakeBackToBack ? '<span style="color:#16a34a;">✓ Yes</span>' : '<span style="color:#dc2626;">✗ No</span>'}</td>
+          <td style="color: ${statusColor}; font-weight: bold;">
+            ${status.charAt(0).toUpperCase() + status.slice(1)}
+            ${status === "rejected" && f.preferenceRejectionReason ? `<br><small>Reason: ${f.preferenceRejectionReason}</small>` : ""}
+          </td>
+          <td>
+            ${status === "pending" ? `
+              <button class="approve" onclick="acceptPreference('${f._id}')"><i class="fas fa-check"></i> Accept</button>
+              <button style="background:#dc2626; color:white;" onclick="openPreferenceRejectionModal('${f._id}')"><i class="fas fa-times"></i> Reject</button>
+            ` : `
+              <button style="background:#6b7280; color:white;" onclick="resetPreferenceStatus('${f._id}')"><i class="fas fa-undo"></i> Reset</button>
+            `}
+          </td>
+        `;
+            table.appendChild(row);
+          });
+        } else {
+          table.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;"><i class="fas fa-clock" style="font-size: 40px; color: #9ca3af; margin-bottom: 10px;"></i><br>No faculty have submitted time preferences yet.</td></tr>`;
+        }
+      } catch (err) {
+        console.error(err);
+        table.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:#dc2626;"><i class="fas fa-exclamation-circle"></i>Error loading data</td></tr>`;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function acceptPreference(facultyId) {
+      if (!confirm("Accept this faculty's preferences?")) return;
+
+      showLoading();
+      updateSessionActivity();
+
+      try {
+        const res = await fetch("/admin/approve-faculty-preference", {
+
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          }
+
+          ,
+          body: JSON.stringify({
+            facultyId, action: "accept"
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification("✅ Preferences accepted!", "success");
+          fetchFacultyPreferences();
+
+          // Notify other tabs
+          localStorage.setItem('admin_data_update', Date.now().toString());
+        }
+
+        else {
+          showNotification("❌ Error: " + (data.message || "Server error"), "error");
+        }
+      }
+
+      catch (e) {
+        console.error(e);
+        showNotification("Server error", "error");
+      }
+
+      finally {
+        hideLoading();
+      }
+    }
+
+    function openPreferenceRejectionModal(facultyId) {
+      rejectPreferenceFacultyId = facultyId;
+      document.getElementById("preferenceRejectionModal").style.display = "flex";
+      updateSessionActivity();
+    }
+
+    function closePreferenceRejectionModal() {
+      rejectPreferenceFacultyId = null;
+      document.getElementById("preferenceRejectionModal").style.display = "none";
+      document.getElementById("preferenceRejectionReason").value = "";
+    }
+
+    async function submitPreferenceRejection() {
+      const reason = document.getElementById("preferenceRejectionReason").value.trim();
+
+      if (!reason) {
+        showNotification("Please enter a reason for rejection", "warning");
+        return;
+      }
+
+      showLoading();
+
+      try {
+        const res = await fetch("/admin/approve-faculty-preference", {
+
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          }
+
+          ,
+          body: JSON.stringify({
+            facultyId: rejectPreferenceFacultyId,
+            action: "reject",
+            reason
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification("❌ Preferences rejected successfully", "success");
+          closePreferenceRejectionModal();
+          fetchFacultyPreferences();
+
+          // Notify other tabs
+          localStorage.setItem('admin_data_update', Date.now().toString());
+        }
+
+        else {
+          showNotification("❌ Error rejecting preferences", "error");
+        }
+      }
+
+      catch (e) {
+        console.error(e);
+        showNotification("Server error", "error");
+      }
+
+      finally {
+        hideLoading();
+      }
+    }
+
+    async function resetPreferenceStatus(facultyId) {
+      if (!confirm("Reset this faculty's preference status to pending?")) return;
+
+      showLoading();
+      updateSessionActivity();
+
+      try {
+        const res = await fetch("/admin/reset-faculty-preference", {
+
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          }
+
+          ,
+          body: JSON.stringify({
+            facultyId
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showNotification("✅ Preference status reset to pending!", "success");
+          fetchFacultyPreferences();
+
+          // Notify other tabs
+          localStorage.setItem('admin_data_update', Date.now().toString());
+        }
+
+        else {
+          showNotification("❌ Error resetting status", "error");
+        }
+      }
+
+      catch (e) {
+        console.error(e);
+        showNotification("Server error", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // ================== TIMETABLE GENERATION & INTERACTION ==================
+    // --- Timetable Generation & Management ---
+    function initializeEmptyGrid() {
+      console.log("Initializing empty grid and clearing local state");
+      timetableData = [];
+      renderTimetable([]);
+
+      const academicYear = document.getElementById("ttAcademicYear").value;
+      const term = document.getElementById("ttTerm").value;
+      const semester = document.getElementById("ttSemester").value;
+
+      if (academicYear && semester) {
+        fetchAllocationsForManual(academicYear, term, semester);
+      }
+    }
+
+    async function loadTimetableGenData() {
+      console.log("Timetable generator section loaded");
+      await loadTTDrafts();
+      await fetchTimetableVersions();
+    }
+
+    async function generateTimetable() {
+      const academicYear = document.getElementById("ttAcademicYear").value;
+      const term = document.getElementById("ttTerm").value;
+      const semester = document.getElementById("ttSemester").value;
+      const draftId = document.getElementById("ttDraftId").value;
+
+      if (!academicYear || !semester) {
+        showNotification("Please enter academic year and semester", "warning");
+        return;
+      }
+
+      showLoading();
+      updateSessionActivity();
+
+      try {
+        const res = await fetch("/api/timetable/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            academicYear,
+            term,
+            semester: parseInt(semester),
+            draftId,
+            lockedSlots: timetableData.filter(s => s.locked)
+          })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          if (data.unallocatedHours > 0) {
+            showNotification(`${data.message}. Some hours remain unallocated.`, "warning");
+          } else {
+            showNotification(data.message, "success");
+          }
+          timetableData = data.slots || [];
+          await fetchAllocationsForManual(academicYear, term, semester);
+        } else {
+          let msg = data.message || "Failed to generate";
+          if (data.details && data.details.length > 0) {
+            msg += "\n\nValidation Details:\n" + data.details.join("\n");
+          }
+          alert(msg); // Use alert for detailed validation errors to ensure they are read
+          if (data.slots) {
+            timetableData = data.slots;
+            await fetchAllocationsForManual(academicYear, term, semester);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        showNotification("Error generating timetable", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function fetchAllocationsForManual(academicYear, term, semester) {
+      try {
+        const res = await fetch(`/api/allocations?academicYear=${encodeURIComponent(academicYear)}&term=${encodeURIComponent(term)}&semester=${semester}`);
+        const data = await res.json();
+        if (data.success) {
+          allocatedSubjects = data.allocations || [];
+          renderAvailableSubjects();
+          // Legend merges allocatedSubjects; must run AFTER fetch completes (not before).
+          if (timetableData && timetableData.length > 0) {
+            renderTimetable(timetableData);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching allocations:", err);
+      }
+    }
+
+    function renderAvailableSubjects() {
+      const container = document.getElementById("ttAvailableSubjects");
+      if (allocatedSubjects.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:20px; color:#94a3b8; font-style:italic; font-size:13px;">No allocations found for this semester.</div>`;
+        return;
+      }
+
+      container.innerHTML = allocatedSubjects.map(sub => `
+        <div class="tt-subject-card ${sub.subjectType.toLowerCase()}" 
+             draggable="true" 
+             ondragstart="handleDragStart(event, ${JSON.stringify(sub).replace(/"/g, '&quot;')})">
+          <div style="font-weight:700;">${sub.subjectCode}</div>
+          <div style="font-size:11px; color:#64748b;">${sub.subjectName}</div>
+          <div style="font-size:11px; margin-top:4px; color:#475569;">
+            <i class="fas fa-user-tie"></i> ${sub.facultyName}
+          </div>
+          ${sub.parallelGroupId ? `<div style="font-size:10px; color:#8b5cf6; margin-top:2px;">Group: ${sub.parallelGroupId}</div>` : ''}
+        </div>
+      `).join("");
+    }
+
+    function renderTimetable(slots) {
+      const container = document.getElementById("timetableGrid");
+      if (!slots || slots.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;"><i class="fas fa-calendar-alt fa-3x" style="margin-bottom:15px; opacity:0.3;"></i><p>Generate or load a timetable to see the grid.</p></div>`;
+        return;
+      }
+
+      const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const uniqueDays = [...new Set(slots.map(s => s.day))].sort((a, b) => daysOrder.indexOf(a) - daysOrder.indexOf(b));
+
+      const uniqueTimes = [...new Set(slots.map(s => s.time))].sort((a, b) => {
+        const parseTime = (t) => {
+          const parts = t.split(' - ');
+          const firstPart = parts[0];
+          const [time, period] = firstPart.split(' ');
+          let [hours, minutes] = time.split(':').map(Number);
+          if (period === 'PM' && hours !== 12) hours += 12;
+          if (period === 'AM' && hours === 12) hours = 0;
+          return hours * 60 + minutes;
+        };
+        return parseTime(a) - parseTime(b);
+      });
+
+      // Legend Data
+      const legendMap = {};
+      slots.forEach(s => {
+        if (s.entries) {
+          s.entries.forEach(e => {
+            const code = (e.subjectCode || e.subjectAbbreviation || '').trim();
+            if (!code) return;
+            if (!legendMap[code]) legendMap[code] = { name: e.subjectName || '', faculties: new Set(), type: e.subjectType };
+            if (e.facultyName) legendMap[code].faculties.add(e.facultyName);
+          });
+        }
+      });
+
+      let html = `
+        <div class="tt-legend">
+          <div class="legend-item"><div class="legend-color" style="background:#3b82f6;"></div> Theory</div>
+          <div class="legend-item"><div class="legend-color" style="background:#10b981;"></div> Lab</div>
+          <div class="legend-item"><div class="legend-color" style="background:#8b5cf6;"></div> Project</div>
+          <div class="legend-item"><div class="legend-color" style="background:#f59e0b; border: 1px dashed #d97706;"></div> Manual</div>
+        </div>
+        <table class="tt-table">
+          <thead>
+            <tr>
+              <th class="tt-time-col" style="background:#f8fafc; color:#1e3a8a; width: 100px;">Day</th>
+              ${uniqueTimes.map(time => `<th>${time}</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      uniqueDays.forEach(day => {
+        html += `<tr>
+          <td class="tt-time-col">${day}</td>`;
+
+        uniqueTimes.forEach(time => {
+          const slot = slots.find(s => s.day === day && s.time === time);
+          const isConflict = slot && slot.conflict;
+          const isLocked = slot && slot.locked;
+          const isManual = slot && slot.isManual;
+          const rawEntries = (slot && slot.entries) ? slot.entries : [];
+
+          // DEDUPLICATION: Show only one abbreviation per subject in the grid
+          let entries = [];
+          if (rawEntries.length > 0) {
+            const seenSubjects = new Set();
+            rawEntries.forEach(e => {
+              const code = (e.subjectAbbreviation || e.subjectCode || e.subjectName || '').trim();
+              if (code && !seenSubjects.has(code)) {
+                entries.push(e);
+                seenSubjects.add(code);
+              }
+            });
+          }
+
+          let cellContent = "";
+          if (entries.length > 0) {
+            const isParallel = entries.length > 1;
+
+            if (isParallel) {
+              cellContent = `<div class="tt-parallel-container">`;
+              entries.forEach(e => {
+                const type = (e.subjectType || "THEORY").toUpperCase();
+                const typeClass = type.toLowerCase();
+                const tooltip = `${e.subjectName}\nFaculty Mapping below`;
+                cellContent += `
+                  <div class="tt-slot-entry ${typeClass}" title="${tooltip}">
+                    <span class="sub-abbr">${e.subjectAbbreviation || e.subjectCode}</span>
+                    ${e.parallelGroupId ? `<span style="font-size:8px; color:#8b5cf6; position:absolute; bottom:2px; right:4px;"><i class="fas fa-users"></i></span>` : ''}
+                  </div>
+                `;
+              });
+              cellContent += `</div>`;
+            } else {
+              const e = entries[0];
+              const type = (e.subjectType || "THEORY").toUpperCase();
+              const typeClass = type.toLowerCase();
+              const tooltip = `${e.subjectName}\nFaculty Mapping below`;
+              cellContent = `
+                <div class="tt-slot-entry ${typeClass}" title="${tooltip}">
+                  <span class="sub-abbr">${e.subjectAbbreviation || e.subjectCode}</span>
+                </div>
+              `;
+            }
+          } else {
+            cellContent = `
+              <div class="tt-empty-placeholder" onclick="openManualEntryModal('${day}', '${time}')">
+                <i class="fas fa-plus-circle"></i>
+                <span>Add Entry</span>
+              </div>
+            `;
+          }
+
+          html += `
+            <td class="tt-slot ${isConflict ? 'conflict' : ''} ${isLocked ? 'locked' : ''}" 
+                ondragover="handleDragOver(event)" 
+                ondragleave="handleDragLeave(event)" 
+                ondrop="handleDrop(event, '${day}', '${time}')"
+                onclick="handleSlotClick(event, '${day}', '${time}')">
+              <div class="tt-slot-container">
+                ${cellContent}
+              </div>
+              ${isLocked ? `<div class="tt-lock-icon"><i class="fas fa-lock"></i></div>` : ''}
+            </td>`;
+        });
+        html += `</tr>`;
+      });
+
+      html += `</tbody></table>`;
+
+      // Legend Detail Table
+      const legendKeys = Object.keys(legendMap);
+      if (legendKeys.length > 0) {
+        html += `
+          <div style="margin-top: 30px; border-top: 2px solid #e2e8f0; padding-top: 20px;">
+            <h4 style="color:#1e40af; margin-bottom:15px; font-weight:700;"><i class="fas fa-info-circle"></i> Subject Details Legend</h4>
+            <table class="legend-table">
+              <thead>
+                <tr>
+                  <th style="width: 15%;">Code</th>
+                  <th style="width: 45%;">Subject Name</th>
+                  <th>Faculties Assigned</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${legendKeys.sort().map(code => {
+          const item = legendMap[code];
+          const facList = Array.from(item.faculties).sort().join(' / ');
+          return `
+                  <tr>
+                    <td><strong>${code}</strong></td>
+                    <td>${item.name || '—'}</td>
+                    <td style="color:#64748b; font-style:italic;">${facList}</td>
+                  </tr>
+                `}).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+    }
+
+
+    function handleSlotClick(e, day, time) {
+      const slot = timetableData.find(s => s.day === day && s.time === time);
+      if (slot && slot.entries.length > 0) {
+        toggleLockSlot(day, time);
+      } else {
+        openManualEntryModal(day, time);
+      }
+    }
+
+    function openManualEntryModal(day, time) {
+      document.getElementById('manualSlotDay').value = day;
+      document.getElementById('manualSlotTime').value = time;
+      document.getElementById('manualSubName').value = "";
+      document.getElementById('manualSubAbbr').value = "";
+      document.getElementById('manualFacName').value = "";
+      document.getElementById('manualEntryModal').style.display = "block";
+    }
+
+    function closeManualEntryModal() {
+      document.getElementById('manualEntryModal').style.display = "none";
+    }
+
+    function saveManualEntry() {
+      const day = document.getElementById('manualSlotDay').value;
+      const time = document.getElementById('manualSlotTime').value;
+      const name = document.getElementById('manualSubName').value.trim();
+      const abbr = document.getElementById('manualSubAbbr').value.trim();
+      const fac = document.getElementById('manualFacName').value.trim();
+
+      if (!name || !abbr) {
+        showNotification("Subject Name and Abbreviation are required", "warning");
+        return;
+      }
+
+      // Remove existing slot at same location
+      timetableData = timetableData.filter(s => !(s.day === day && s.time === time));
+
+      timetableData.push({
+        day,
+        time,
+        locked: true,
+        isManual: true,
+        entries: [{
+          subjectName: name,
+          subjectCode: abbr, // use abbr as code for manual
+          subjectAbbreviation: abbr,
+          facultyName: fac || "External",
+          subjectType: "Manual"
+        }],
+        semester: parseInt(document.getElementById("ttSemester").value)
+      });
+
+      renderTimetable(timetableData);
+      closeManualEntryModal();
+      showNotification("Manual subject added and slot locked", "success");
+    }
+
+    // --- Drag & Drop Handlers ---
+    function handleDragStart(e, sub) {
+      e.dataTransfer.setData("application/json", JSON.stringify(sub));
+    }
+
+    function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add("drag-over"); }
+    function handleDragLeave(e) { e.currentTarget.classList.remove("drag-over"); }
+
+    async function handleDrop(e, day, time) {
+      e.preventDefault();
+      e.currentTarget.classList.remove("drag-over");
+
+      const sub = JSON.parse(e.dataTransfer.getData("application/json"));
+
+      let entriesToPlace = [];
+      if (sub.parallelGroupId) {
+        // Ensure all subjects in the parallel group are placed together
+        entriesToPlace = allocatedSubjects.filter(a => a.parallelGroupId === sub.parallelGroupId);
+      } else {
+        entriesToPlace = [sub];
+      }
+
+      const conflicts = await validatePlacement(entriesToPlace, day, time);
+      if (conflicts.length > 0) {
+        showNotification(conflicts[0].message, "error");
+        return;
+      }
+
+      timetableData = timetableData.filter(s => !(s.day === day && s.time === time));
+      timetableData.push({
+        day,
+        time,
+        locked: true, // Manual drag-drop is locked by default
+        entries: entriesToPlace.map(s => ({
+          subjectId: s.subjectId._id || s.subjectId,
+          facultyId: s.facultyId._id || s.facultyId,
+          subjectName: s.subjectName,
+          subjectCode: s.subjectCode,
+          subjectAbbreviation: s.subjectAbbreviation || s.subjectCode,
+          facultyName: s.facultyName,
+          subjectType: s.subjectType
+        })),
+        semester: parseInt(document.getElementById("ttSemester").value)
+      });
+
+      renderTimetable(timetableData);
+      validateTimetable(timetableData);
+      showNotification("Subject placed successfully", "success");
+    }
+
+    async function validatePlacement(entries, day, time) {
+      const results = [];
+      for (const entry of entries) {
+        const facId = entry.facultyId._id || entry.facultyId;
+        const clash = timetableData.find(s => s.day === day && s.time === time && s.entries.some(e => (e.facultyId._id || e.facultyId) === facId));
+        if (clash) {
+          results.push({ message: `Faculty ${entry.facultyName} is already assigned to this slot.` });
+        }
+      }
+      return results;
+    }
+
+    function removeSlot(day, time) {
+      timetableData = timetableData.filter(s => !(s.day === day && s.time === time));
+      renderTimetable(timetableData);
+      validateTimetable(timetableData);
+    }
+
+    function toggleLockSlot(day, time) {
+      const slot = timetableData.find(s => s.day === day && s.time === time);
+
+      if (slot) {
+        slot.locked = !slot.locked;
+        renderTimetable(timetableData);
+      }
+    }
+
+    async function validateTimetable(slots) {
+      try {
+        const res = await fetch("/api/timetable/validate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slots })
+        });
+        const data = await res.json();
+        const conflictDiv = document.getElementById("ttConflicts");
+
+        timetableData.forEach(s => s.conflict = false);
+
+        if (data.success && data.conflicts.length > 0) {
+          data.conflicts.forEach(c => {
+            const slot = timetableData[c.index];
+            if (slot) slot.conflict = true;
+          });
+          conflictDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> Conflicts detected: ${data.conflicts.map(c => c.message).join(", ")}`;
+          conflictDiv.style.display = "block";
+        } else {
+          conflictDiv.style.display = "none";
+        }
+      } catch (err) {
+        console.error("Validation error:", err);
+      }
+    }
+
+    async function saveTimetable(isDraft) {
+      if (timetableData.length === 0) {
+        showNotification("No timetable to save", "warning");
+        return;
+      }
+
+      const academicYear = document.getElementById("ttAcademicYear").value;
+      const term = document.getElementById("ttTerm").value;
+      const semester = parseInt(document.getElementById("ttSemester").value);
+
+      const name = prompt("Enter a name for this timetable version:", `${isDraft ? 'Draft' : 'Final'} - Sem ${semester}`);
+      if (!name) return;
+
+      showLoading();
+      try {
+        const res = await fetch("/api/timetable/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, academicYear, term, semester, isDraft, slots: timetableData })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showNotification("Timetable saved successfully!", "success");
+          fetchTimetableVersions();
+        } else {
+          showNotification(data.message || "Failed to save", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showNotification("Error saving timetable", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function fetchTimetableVersions() {
+      try {
+        const res = await fetch("/api/timetable/versions");
+        const data = await res.json();
+        if (data.success) {
+          const tbody = document.querySelector("#ttVersionsTable tbody");
+          tbody.innerHTML = data.versions.map(v => `
+            <tr>
+              <td>${v.name}</td>
+              <td>${v.academicYear}</td>
+              <td>${v.term}</td>
+              <td>${v.semester}</td>
+              <td>
+                <span style="background:${v.isDraft ? '#fef3c7' : '#dcfce7'}; color:${v.isDraft ? '#92400e' : '#166534'}; padding:4px 8px; border-radius:12px; font-size:12px;">
+                  ${v.isDraft ? 'Draft' : 'Final'}
+                </span>
+              </td>
+              <td>${new Date(v.updatedAt).toLocaleDateString()}</td>
+              <td><button onclick="loadTimetable('${v._id}')" class="approve" style="padding:6px 12px;"><i class="fas fa-eye"></i> Load</button></td>
+            </tr>
+          `).join("");
+        }
+      } catch (err) {
+        console.error("Error fetching versions:", err);
+      }
+    }
+
+    async function loadTimetable(id) {
+      showLoading();
+      try {
+        const res = await fetch(`/api/timetable/load/${id}`);
+        const data = await res.json();
+        if (data.success) {
+          timetableData = data.timetable.slots;
+          document.getElementById("ttAcademicYear").value = data.timetable.academicYear;
+          document.getElementById("ttTerm").value = data.timetable.term;
+          document.getElementById("ttSemester").value = data.timetable.semester;
+          renderTimetable(timetableData);
+          validateTimetable(timetableData);
+          await fetchAllocationsForManual(data.timetable.academicYear, data.timetable.term, data.timetable.semester);
+          showNotification("Timetable loaded", "info");
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        hideLoading();
+      }
+    }
+
+
+    async function loadTTDrafts() {
+      const select = document.getElementById('ttDraftId');
+      if (!select) return;
+
+      // Only fetch list of drafts if the dropdown is not populated OR we are refreshing
+      if (select.options.length <= 1) {
+        try {
+          const res = await fetch("/api/timetable-drafts");
+          const data = await res.json();
+
+          if (data.success) {
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Use Global Rules</option>';
+            data.drafts.forEach(draft => {
+              const option = document.createElement('option');
+              option.value = draft._id;
+              option.textContent = draft.draftName;
+              select.appendChild(option);
+            });
+            select.value = currentVal;
+          }
+        } catch (err) {
+          console.error("Error loading drafts:", err);
+        }
+      }
+
+      // Update the visual timeline based on selection
+      const draftId = select.value;
+      const timelineContainer = document.getElementById('ttSlotTimeline');
+
+      try {
+        if (!draftId) {
+          // Fetch and show current global rules
+          const res = await fetch("/admin/get-timeline");
+          const data = await res.json();
+          if (data.success && data.timeline) {
+            // Find day with most slots to show as representitive timeline
+            const days = Object.keys(data.timeline);
+            if (days.length > 0) {
+              const bestDay = days.reduce((a, b) => data.timeline[a].length >= data.timeline[b].length ? a : b);
+              renderSlotTimeline(data.timeline[bestDay].map((s, i) => ({
+                period: i + 1,
+                startTime: s.start,
+                endTime: s.end
+              })));
+            }
+          }
+        } else {
+          // Fetch and show draft slots
+          const res = await fetch(`/api/timetable-drafts/${draftId}`);
+          const data = await res.json();
+          if (data.success) {
+            // Group by period to show a clean timeline
+            const slots = data.draft.slots.filter(s => s.day === data.draft.slots[0].day);
+            renderSlotTimeline(slots);
+          }
+        }
+      } catch (err) {
+        console.error("Error updating timeline:", err);
+      }
+    }
+
+    function renderSlotTimeline(slots) {
+      const timelineContainer = document.getElementById('ttSlotTimeline');
+      if (!timelineContainer) return;
+
+      if (!slots || slots.length === 0) {
+        timelineContainer.innerHTML = '<div style="color: #94a3b8; font-size: 13px; font-style: italic; width: 100%; text-align: center;">No slots configured for this structure.</div>';
+        return;
+      }
+
+      timelineContainer.innerHTML = slots.map(slot => `
+        <div class="timeline-slot">
+          <div class="slot-name">Period ${slot.period}</div>
+          <div class="slot-time">${slot.startTime} - ${slot.endTime}</div>
+        </div>
+      `).join("");
+    }
+
+    async function deleteCurrentTimetable() {
+      const academicYear = document.getElementById("ttAcademicYear").value;
+      const term = document.getElementById("ttTerm").value;
+      const semester = document.getElementById("ttSemester").value;
+
+      if (!academicYear || !semester) {
+        showNotification("Please enter academic year and semester to identify the draft to delete.", "warning");
+        return;
+      }
+
+      if (!confirm("Are you sure you want to delete ALL drafts for this specific semester, year, and term? This action cannot be undone.")) return;
+
+      showLoading();
+      try {
+        const res = await fetch("/api/timetable/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ academicYear, term, semester })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showNotification(data.message, "success");
+          timetableData = [];
+          renderTimetable([]);
+          fetchTimetableVersions();
+        } else {
+          showNotification(data.message || "Failed to delete", "error");
+        }
+      } catch (err) {
+        console.error("Delete error:", err);
+        showNotification("Error connecting to server", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function saveCurrentStructureAsDraft() {
+      // Logic to save the structure currently being displayed in the generator
+      // We can take slots from the global rules or from another draft
+      const draftId = document.getElementById('ttDraftId').value;
+
+      let structureToSave = null;
+
+      try {
+        showLoading();
+        if (!draftId) {
+          const res = await fetch("/admin/get-timeline");
+          const data = await res.json();
+          if (data.success) structureToSave = data.timeline;
+        } else {
+          const res = await fetch(`/api/timetable-drafts/${draftId}`);
+          const data = await res.json();
+          if (data.success) {
+            // Convert draft slots back to rules-like structure for the prompt
+            const rulesFormat = {};
+            data.draft.slots.forEach(s => {
+              if (!rulesFormat[s.day]) rulesFormat[s.day] = [];
+              rulesFormat[s.day].push({ start: s.startTime, end: s.endTime, period: s.period });
+            });
+            structureToSave = rulesFormat;
+          }
+        }
+        hideLoading();
+
+        if (!structureToSave) return showNotification("Could not retrieve current structure", "error");
+
+        const newName = prompt("Enter a name for this new draft:", `Structure Copy ${new Date().toLocaleDateString()}`);
+        if (!newName) return;
+
+        // Flatten back to draft slots
+        const slots = [];
+        let daysCount = 0;
+        let pCount = 0;
+        for (const day in structureToSave) {
+          daysCount++;
+          structureToSave[day].forEach((s, idx) => {
+            pCount = Math.max(pCount, idx + 1);
+            slots.push({
+              day,
+              period: s.period || idx + 1,
+              startTime: s.start || s.startTime,
+              endTime: s.end || s.endTime
+            });
+          });
+        }
+
+        const saveRes = await fetch("/api/timetable-drafts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            draftName: newName,
+            days: daysCount,
+            periodsPerDay: pCount,
+            slots
+          })
+        });
+
+        const saveData = await saveRes.json();
+        if (saveData.success) {
+          showNotification("✅ Structure saved as draft!", "success");
+          // Reset select and reload
+          const select = document.getElementById('ttDraftId');
+          select.innerHTML = '<option value="">Use Global Rules</option>';
+          loadTTDrafts();
+        }
+      } catch (err) {
+        console.error(err);
+        hideLoading();
+        showNotification("Error saving structure", "error");
+      }
+    }
+
+    // Load drafts on section change or page load
+    window.addEventListener('hashchange', () => {
+      if (location.hash === '#generateTT' || location.hash === '#timetable') {
+        loadTTDrafts();
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadTTDrafts();
+    });
+
+    function openManualEntryModal(day, time) {
+      document.getElementById('manualSlotDay').value = day;
+      document.getElementById('manualSlotTime').value = time;
+      document.getElementById('manualSubName').value = "";
+      document.getElementById('manualSubAbbr').value = "";
+      document.getElementById('manualFacName').value = "";
+      const modal = document.getElementById('manualEntryModal');
+      modal.style.display = "flex";
+    }
+
+    function closeManualEntryModal() {
+      document.getElementById('manualEntryModal').style.display = "none";
+    }
+
+    async function saveManualEntry() {
+      const day = document.getElementById('manualSlotDay').value;
+      const time = document.getElementById('manualSlotTime').value;
+      const name = document.getElementById('manualSubName').value.trim();
+      const abbr = document.getElementById('manualSubAbbr').value.trim();
+      const fac = document.getElementById('manualFacName').value.trim();
+
+      const academicYear = document.getElementById("ttAcademicYear").value;
+      const term = document.getElementById("ttTerm").value;
+      const semester = document.getElementById("ttSemester").value;
+
+      if (!name || !abbr) {
+        return showNotification("Subject Name and Code are required.", "warning");
+      }
+
+      if (!academicYear || !semester) {
+        return showNotification("Academic Year and Semester must be set.", "warning");
+      }
+
+      showLoading();
+      try {
+        const res = await fetch("/api/manual-entries", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            academicYear, term, semester: parseInt(semester),
+            subjectName: name, subjectCode: abbr, facultyName: fac || "External",
+            day, time
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          closeManualEntryModal();
+          // Re-initialize to show the new entry (or we could update locally)
+          initializeEmptyGrid();
+          showNotification("Manual entry saved and locked persistently.", "success");
+        } else {
+          showNotification(data.message, "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showNotification("Error saving manual entry.", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function deleteManualEntry(day, time, event) {
+      if (event) event.stopPropagation();
+      if (!confirm("Remove this manual subject entry? This will free up the slot for auto-generation.")) return;
+
+      const academicYear = document.getElementById("ttAcademicYear").value;
+      const term = document.getElementById("ttTerm").value;
+      const semester = document.getElementById("ttSemester").value;
+
+      showLoading();
+      try {
+        const res = await fetch(`/api/manual-entries?academicYear=${encodeURIComponent(academicYear)}&term=${encodeURIComponent(term)}&semester=${semester}&day=${encodeURIComponent(day)}&time=${encodeURIComponent(time)}`, {
+          method: "DELETE"
+        });
+        const data = await res.json();
+        if (data.success) {
+          initializeEmptyGrid();
+          showNotification("Manual entry deleted. Slot is now available.", "info");
+        } else {
+          showNotification(data.message, "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showNotification("Error deleting manual entry.", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+    async function fetchAbsences() {
+      const tbody = document.getElementById("absencesTableBody");
+      if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="no-data">Loading absences...</td></tr>`;
+      try {
+        const res = await fetch("/api/admin/absences");
+        const data = await res.json();
+        if (data.success) {
+          if (data.absences.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="no-data">No absences reported.</td></tr>`;
+          } else {
+            tbody.innerHTML = data.absences.map(a => `
+              <tr>
+                <td><strong>${a.facultyName || a.facultyId?.name || 'Unknown'}</strong></td>
+                <td>${new Date(a.date).toLocaleDateString()}</td>
+                <td>${(a.semester != null && a.semester !== "") ? `Semester ${a.semester}` : '-'}</td>
+                <td>${(Array.isArray(a.timeSlots) && a.timeSlots.length > 0) ? a.timeSlots.join(", ") : "No slots available"}</td>
+              </tr>
+            `).join("");
+          }
+        } else {
+          if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="no-data">No absences found</td></tr>`;
+        }
+      } catch (err) {
+        console.error("Error fetching absences:", err);
+        if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="no-data">Error loading absences.</td></tr>`;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function loadAvailabilitySlots() {
+      const slotSelect = document.getElementById("checkSlot");
+      if (!slotSelect) return;
+
+      slotSelect.innerHTML = '<option value="">-- Loading... --</option>';
+
+      try {
+        const res = await fetch("/admin/timeslots");
+        const data = await res.json();
+
+        if (data.success && data.timeSlots && data.timeSlots.length > 0) {
+          // data.timeSlots is already sorted chronologically, e.g. ["09:00 AM - 09:50 AM", ...]
+          slotSelect.innerHTML = data.timeSlots.map((ts, i) =>
+            `<option value="${ts}">Period ${i + 1} &nbsp;(${ts})</option>`
+          ).join('');
+        } else {
+          slotSelect.innerHTML = '<option value="">-- No timetable generated yet --</option>';
+          if (data.message) {
+            showNotification(data.message, "info");
+          }
+        }
+      } catch (err) {
+        console.error("Error loading time slots:", err);
+        slotSelect.innerHTML = '<option value="">-- Error loading slots --</option>';
+      }
+    }
+
+    async function checkFacultyAvailability() {
+      const date = document.getElementById("checkDate").value;
+      const timeSlot = document.getElementById("checkSlot").value;
+
+      if (!date || !timeSlot) {
+        return showNotification("Please select Date and Time Slot.", "warning");
+      }
+
+      const [startTime, endTime] = timeSlot.split(" - ");
+
+      showLoading();
+      try {
+        const res = await fetch(`/api/admin/faculty-availability?date=${date}&startTime=${encodeURIComponent(startTime.trim())}&endTime=${encodeURIComponent(endTime.trim())}`);
+        const data = await res.json();
+        if (data.success) {
+          const resultsDiv = document.getElementById("availabilityResults");
+          const tbody = document.getElementById("availableFacultyTableBody");
+
+          resultsDiv.style.display = "block";
+          if (data.freeFaculties.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="no-data">No available faculty members found for this slot.</td></tr>`;
+          } else {
+            tbody.innerHTML = data.freeFaculties.map(f => `
+              <tr>
+                <td>${f.facultyId}</td>
+                <td>${f.name}</td>
+                <td>${f.designation || '-'}</td>
+                <td>${f.department || '-'}</td>
+              </tr>
+            `).join("");
+          }
+        }
+      } catch (err) {
+        console.error("Error checking availability:", err);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // ================== SUBSTITUTION (EXTENSION) ==================
+    function toYMD(d) {
+      const date = new Date(d);
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, "0");
+      const dd = String(date.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function handleSlotCheckboxChange(groupName, changedEl) {
+      // Multi-slot support: allow multiple checkboxes per absence
+      return;
+    }
+
+    function getSelectedSlots(groupName) {
+      return Array.from(document.querySelectorAll(`input[name="${groupName}"]:checked`)).map(cb => cb.value);
+    }
+
+    async function fetchSubstitutionAbsences() {
+      const tbody = document.getElementById("subAbsencesTableBody");
+      const panel = document.getElementById("freeFacultyPanel");
+      if (panel) panel.style.display = "none";
+
+      if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="no-data">Loading absences...</td></tr>`;
+
+      try {
+        const res = await fetch("/api/admin/absences");
+        const data = await res.json();
+
+        if (!data.success || !Array.isArray(data.absences)) {
+          if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="no-data">No absences reported.</td></tr>`;
+          return;
+        }
+
+        const absences = data.absences;
+        if (absences.length === 0) {
+          if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="no-data">No absences reported.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = absences.map((a, idx) => {
+          const fid = (a.facultyId && (a.facultyId._id || a.facultyId)) || "";
+          const name = a.facultyName || a.facultyId?.name || "Unknown";
+          const dateLabel = a.date ? new Date(a.date).toLocaleDateString() : "-";
+          const ymd = a.date ? toYMD(a.date) : "";
+          const slots = Array.isArray(a.timeSlots) ? a.timeSlots : [];
+          const groupName = `sub_slot_${a._id || idx}`;
+
+          const slotHtml = slots.length > 0
+            ? slots.map((s, i) => `
+                <label style="display:flex; align-items:center; gap:8px; justify-content:flex-start; margin:4px 0;">
+                  <input type="checkbox" name="${groupName}" value="${String(s).replace(/"/g, "&quot;")}" onchange="handleSlotCheckboxChange('${groupName}', this)">
+                  <span>${s}</span>
+                </label>
+              `).join("")
+            : `<span style="color:#64748b; font-style: italic;">No slots</span>`;
+
+          return `
+            <tr>
+              <td><strong>${name}</strong></td>
+              <td>${dateLabel}</td>
+              <td style="text-align:left;">${slotHtml}</td>
+              <td>
+                <button class="approve" onclick="viewFreeFacultyForAbsence('${a._id}', '${fid}', '${String(name).replace(/'/g, "&#39;")}', '${ymd}', '${groupName}')">
+                  <i class="fas fa-eye"></i> View Free Faculty
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join("");
+
+        // Always fetch persistent substitution history from DB (no frontend memory)
+        await loadSubstitutionHistory();
+      } catch (err) {
+        console.error("Fetch substitution absences error:", err);
+        if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="no-data">Error loading absences.</td></tr>`;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    let substitutionHistoryInterval = null;
+    async function loadSubstitutionHistory() {
+      const tbody = document.getElementById("subHistoryTableBody");
+      if (!tbody) return;
+
+      try {
+        const res = await fetch("/substitution-history");
+        const data = await res.json();
+        console.log("Fetched substitution history:", data.data);
+
+        const list = Array.isArray(data.data) ? data.data : [];
+        if (list.length === 0) {
+          tbody.innerHTML = "<tr><td colspan='5' class='no-data'>No substitution history available</td></tr>";
+          return;
+        }
+
+        // Render each substitution opportunity (one row per request)
+        let html = "";
+        list.forEach(r => {
+          // Use populated name from database only
+          const absentName = r.absentFacultyId?.name || "Unknown";
+          const assignedName = r.assignedFacultyId?.name || "-";
+
+          // Format date correctly using toLocaleDateString()
+          const dateLabel = r.date ? new Date(r.date).toLocaleDateString() : "-";
+
+          const slot = r.timeSlot || "-";
+          const sem = (r.semester != null && r.semester !== "") ? `Semester ${r.semester}` : "-";
+          const deadline = r.deadline ? new Date(r.deadline).toLocaleString() : "-";
+          const status = r.status || "pending";
+
+          let color = "#f59e0b"; // Pending (Orange/Yellow)
+          if (status === "accepted") color = "#16a34a"; // Green
+          if (status === "expired") color = "#dc2626"; // Red
+
+          html += `
+            <tr>
+              <td><strong>${absentName}</strong></td>
+              <td>${dateLabel}</td>
+              <td style="text-align:left;">
+                <div><strong>Slot:</strong> ${slot}</div>
+                <div><strong>${sem}</strong></div>
+                <div><small><strong>Deadline:</strong> ${deadline}</small></div>
+              </td>
+              <td><strong>${assignedName}</strong></td>
+              <td style="color: ${color}; font-weight: 700;">
+                ${status.charAt(0).toUpperCase() + status.slice(1)}
+              </td>
+            </tr>
+          `;
+        });
+
+        tbody.innerHTML = html;
+
+        // Optional auto-refresh every 10s while substitution section is open
+        if (!substitutionHistoryInterval) {
+          substitutionHistoryInterval = setInterval(() => {
+            const subSection = document.getElementById("substitution");
+            if (!subSection || subSection.style.display === "none") return;
+            loadSubstitutionHistory().catch(() => { });
+          }, 10000);
+        }
+      } catch (err) {
+        console.error("Substitution history load error:", err);
+      }
+    }
+
+    async function viewFreeFacultyForAbsence(absenceId, absentFacultyId, absentFacultyName, dateYMD, slotGroupName) {
+      const selectedSlots = getSelectedSlots(slotGroupName);
+      console.log("Selected Slots:", selectedSlots);
+
+      if (!selectedSlots || selectedSlots.length === 0) {
+        return showNotification("Please select at least one time slot.", "warning");
+      }
+
+      console.log("Viewing Free Faculty for Absence:", { absenceId, absentFacultyId, dateYMD, selectedSlots });
+
+      showLoading();
+      try {
+        const slotParams = selectedSlots.map(s => `timeSlot=${encodeURIComponent(s)}`).join("&");
+        const url = `/get-free-faculty?facultyId=${encodeURIComponent(absentFacultyId)}&date=${encodeURIComponent(dateYMD)}&${slotParams}`;
+        console.log("Calling API:", url);
+        const res = await fetch(url);
+        const data = await res.json();
+
+        const panel = document.getElementById("freeFacultyPanel");
+        const tbody = document.getElementById("freeFacultyTableBody");
+        if (!panel || !tbody) return;
+
+        panel.style.display = "block";
+
+        if (!data.success) {
+          showNotification(data.message || "No class scheduled at this slot", "info");
+          tbody.innerHTML = `<tr><td colspan="5" class="no-data">${data.message || "No class scheduled at this slot"}</td></tr>`;
+          return;
+        }
+
+        const slotWise = data.slotWiseFreeFaculties || {};
+        const slotMsgs = data.slotWiseMessages || {};
+        const slotSems = data.slotWiseSemesters || {};
+        const slotSent = data.slotWiseRequestSent || {};
+
+        const slotsToRender = selectedSlots;
+        let html = "";
+        const bulkContext = {
+          absentFacultyId,
+          absentFacultyName,
+          dateYMD,
+          slotWise,
+          slotMsgs,
+          slotSems,
+          slotSent,
+          selectedSlots: slotsToRender
+        };
+
+        slotsToRender.forEach(slot => {
+          html += `
+            <tr>
+              <td colspan="5" style="text-align:left; background:#f8fafc; font-weight:700;">
+                Time Slot: ${slot}
+              </td>
+            </tr>
+          `;
+
+          const list = slotWise[slot] || [];
+          if (!list || list.length === 0) {
+            const msg = slotMsgs[slot] || "All busy for this slot";
+            html += `<tr><td colspan="5" class="no-data">${msg}</td></tr>`;
+          } else {
+            html += list.map(f => `
+              <tr>
+                <td>${f.facultyId || "-"}</td>
+                <td>${f.name || "-"}</td>
+                <td>${f.department || "-"}</td>
+                <td>${f.email || "-"}</td>
+                <td>-</td>
+              </tr>
+            `).join("");
+          }
+        });
+
+        tbody.innerHTML = html || `<tr><td colspan="5" class="no-data">No data</td></tr>`;
+
+        // Save context for single bulk Send Request button
+        window.__subBulkContext = bulkContext;
+        const btn = document.getElementById("sendAllSubstitutionBtn");
+        const deadlineInput = document.getElementById("deadlineInput");
+        if (btn) {
+          // Show only if there is at least one free faculty in any selected slot
+          const hasAny = (slotsToRender || []).some(s => (slotWise[s] || []).length > 0);
+          const alreadySent = (slotsToRender || []).some(s => slotSent[s]);
+
+          btn.style.display = hasAny ? "inline-flex" : "none";
+          if (deadlineInput) deadlineInput.style.display = hasAny ? "inline-flex" : "none";
+
+          if (alreadySent) {
+            btn.disabled = true;
+            btn.style.opacity = "0.5";
+            btn.innerHTML = '<i class="fas fa-check"></i> Request Already Sent';
+            if (deadlineInput) deadlineInput.disabled = true;
+            showNotification("Request already sent for this slot", "info");
+          } else {
+            btn.disabled = false;
+            btn.style.opacity = "1";
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Request';
+            if (deadlineInput) deadlineInput.disabled = false;
+          }
+        }
+      } catch (err) {
+        console.error("View free faculty error:", err);
+        showNotification("Error fetching free faculty", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // Single button: send to ALL available faculties shown (slot-wise)
+    async function sendSubstitutionRequestToAll() {
+      const ctx = window.__subBulkContext;
+      if (!ctx) return showNotification("Please view free faculty first.", "warning");
+
+      const { absentFacultyId, absentFacultyName, dateYMD, slotWise, selectedSlots, slotSems } = ctx;
+      const slots = selectedSlots || [];
+
+      const deadlineVal = (document.getElementById("deadlineInput") || {}).value || "";
+      const deadlineDate = deadlineVal ? new Date(deadlineVal) : null;
+      if (!deadlineDate || isNaN(deadlineDate.getTime())) {
+        alert("Please select a valid deadline.");
+        return;
+      }
+      if (deadlineDate.getTime() <= Date.now()) {
+        alert("Deadline must be in the future.");
+        return;
+      }
+
+      const tasks = [];
+      slots.forEach(slot => {
+        const list = slotWise?.[slot] || [];
+        const facultyIds = list.map(x => x?._id).filter(Boolean);
+        if (facultyIds.length === 0) return;
+        tasks.push({ slot, facultyIds, semester: slotSems?.[slot] });
+      });
+
+      if (tasks.length === 0) return showNotification("No free faculty to send request.", "info");
+
+      showLoading();
+      try {
+        await Promise.all(tasks.map(async (t) => {
+          const res = await fetch("/send-substitution-request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              facultyIds: t.facultyIds,
+              fromFacultyId: absentFacultyId,
+              date: dateYMD,
+              timeSlot: t.slot,
+              semester: t.semester,
+              absentFacultyName,
+              deadline: deadlineDate.toISOString()
+            })
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.message || "Failed to send request");
+        }));
+
+        showNotification("Request sent successfully", "success");
+
+        // Immediately disable the button and input to prevent duplicate or modified requests
+        const btn = document.getElementById("sendAllSubstitutionBtn");
+        const deadlineInput = document.getElementById("deadlineInput");
+        if (btn) {
+          btn.disabled = true;
+          btn.style.opacity = "0.5";
+          btn.innerHTML = '<i class="fas fa-check"></i> Request Sent';
+        }
+        if (deadlineInput) {
+          deadlineInput.disabled = true;
+        }
+
+        // Refresh status display (Waiting/Accepted/Expired) per slot
+        await refreshSubstitutionStatus(absentFacultyId, dateYMD, tasks.map(t => t.slot));
+      } catch (err) {
+        console.error("Send-to-all substitution error:", err);
+        showNotification(err.message || "Error sending substitution request", "error");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function refreshSubstitutionStatus(fromFacultyId, dateYMD, slots) {
+      try {
+        const tbody = document.getElementById("freeFacultyTableBody");
+        if (!tbody) return;
+
+        const results = await Promise.all((slots || []).map(async (slot) => {
+          const url = `/api/substitution/opportunity-status?fromFacultyId=${encodeURIComponent(fromFacultyId)}&date=${encodeURIComponent(dateYMD)}&timeSlot=${encodeURIComponent(slot)}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          return { slot, data };
+        }));
+
+        let html = tbody.innerHTML || "";
+        results.forEach(r => {
+          const st = r.data?.status || "pending";
+          const acceptedName = r.data?.acceptedFacultyName || "";
+          const deadline = r.data?.deadline ? new Date(r.data.deadline).toLocaleString() : "-";
+
+          let text = "Waiting for response";
+          if (st === "accepted") text = `Accepted by ${acceptedName || "Faculty"}`;
+          else if (st === "expired") text = "No faculty accepted (Expired)";
+
+          html += `
+            <tr>
+              <td colspan="5" class="no-data" style="text-align:left;">
+                <strong>Time Slot:</strong> ${r.slot} &nbsp; | &nbsp;
+                <strong>Deadline:</strong> ${deadline} &nbsp; | &nbsp;
+                <strong>Status:</strong> ${text}
+              </td>
+            </tr>
+          `;
+        });
+
+        tbody.innerHTML = html;
+      } catch (err) {
+        console.error("Refresh substitution status error:", err);
+      }
+    }
+  </script>
+</body>
+
+</html>

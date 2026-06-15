@@ -1,0 +1,8319 @@
+const express = require("express");
+const cors = require("cors");
+const bcrypt = require("bcrypt");
+const path = require("path");
+const multer = require("multer");
+const ExcelJS = require("exceljs");
+const fs = require("fs");
+const { v4: uuidv4 } = require("uuid");
+const nodemailer = require("nodemailer");
+const crypto = require("crypto");
+const mongoose = require("mongoose");
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
+
+const connectDB = require("./db");
+const Admin = require("./user");
+const Faculty = require("./faculty");
+const Subject = require("./subject");
+const Student = require("./student");
+const Settings = require("./settings");
+const Timeline = require("./timeline");
+const FacultyPreference = require("./facultyPreference");
+const FacultyAllocation = require("./facultyAllocation");
+const SubmittedPreference = require("./submittedpreference");
+const WorkloadConfig = require("./workloadConfig");
+const Timetable = require("./Timetable");
+const Room = require("./room");
+const TimetableDraft = require("./timetableDraft");
+const Absence = require("./Absence");
+const SubstitutionRequest = require("./SubstitutionRequest");
+const Message = require("./Message");
+const SubstitutionRequests = require("./substitutionRequests");
+const buildSubstitutionSystemRoutes = require("./substitutionSystemRoutes");
+const ManualEntry = require("./ManualEntry");
+
+
+const DESIGNATION_PRIORITY = {
+  "Professor": 1,
+  "Associate Professor": 2,
+  "Assistant Professor": 3
+};
+
+const NON_TEST_FACULTY_FILTER = {
+  name: { $not: /test|dummy/i },
+  email: { $not: /test|dummy/i },
+  isTest: { $ne: true }
+};
+
+function normalizeDesignation(designation) {
+  switch (designation) {
+    case "TEST_PROF": return "Professor";
+    case "TEST_ASSOC": return "Associate Professor";
+    case "TEST_ASST": return "Assistant Professor";
+    case "Professor": return "Professor";
+    case "Associate Professor": return "Associate Professor";
+    case "Assistant Professor": return "Assistant Professor";
+    default:
+      console.warn(`\u26A0\uFE0F Unknown designation encountered: "${designation}". Defaulting safely to "Assistant Professor".`);
+      return "Assistant Professor";
+  }
+}
+
+const cron = require("node-cron");
+
+/* ========== REDIS SETUP (Optional - for distributed session tracking) ========== */
+let redisClient;
+try {
+  const redis = require('redis');
+  (async () => {
+    try {
+      redisClient = redis.createClient({
+        url: process.env.REDIS_URL || 'redis://localhost:6379'
+      });
+
+      redisClient.on('error', (err) => {
+        console.log('⚠️ Redis Client Error, using in-memory fallback', err.message);
+        redisClient = null;
+      });
+
+      await redisClient.connect();
+      console.log('✅ Redis connected for session management');
+    } catch (err) {
+      console.log('⚠️ Redis connection failed, using in-memory fallback');
+      redisClient = null;
+    }
+  })();
+} catch (err) {
+  console.log('⚠️ Redis not available, using in-memory fallback');
+  redisClient = null;
+}
+
+// In-memory fallback if Redis is not available
+const memoryStore = new Map();
+
+// Helper to get/set with fallback
+async function getStore(key) {
+  if (redisClient) {
+    try {
+      return await redisClient.get(key);
+    } catch (err) {
+      return memoryStore.get(key) || null;
+    }
+  } else {
+    return memoryStore.get(key) || null;
+  }
+}
+
+async function setStore(key, value, expiry = 3600) {
+  if (redisClient) {
+    try {
+      await redisClient.set(key, value, { EX: expiry });
+    } catch (err) {
+      memoryStore.set(key, value);
+      setTimeout(() => memoryStore.delete(key), expiry * 1000);
+    }
+  } else {
+    memoryStore.set(key, value);
+    setTimeout(() => memoryStore.delete(key), expiry * 1000);
+  }
+}
+
+async function delStore(key) {
+  if (redisClient) {
+    try {
+      await redisClient.del(key);
+    } catch (err) {
+      memoryStore.delete(key);
+    }
+  } else {
+    memoryStore.delete(key);
+  }
+}
+
+/* ========== ONE-TIME DEADLINE NOTIFICATION ========== */
+cron.schedule("*/5 * * * *", async () => {
+  try {
+    const deadlineSetting = await Settings.findOne({ key: "preferenceDeadline" });
+    if (!deadlineSetting) return;
+
+    const deadline = Number(deadlineSetting.value);
+    const reminderSent = await Settings.findOne({ key: "preferenceReminderSent" });
+
+    // If deadline has passed and we haven't sent notifications yet
+    if (Date.now() > deadline && reminderSent?.value !== deadline) {
+      console.log("📌 Deadline expired. Sending notifications to pending faculties...");
+
+      // Get faculties who have submitted final preferences
+      const submitted = await SubmittedPreference.find({ final: true });
+      const submittedUsernames = submitted.map(p =>
+        p.facultyUsername.trim().toLowerCase()
+      );
+
+      // Get all approved faculties
+      const faculties = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER });
+
+      // Identify faculties who haven't submitted
+      const pendingFaculties = faculties.filter(f =>
+        !submittedUsernames.includes(f.username.trim().toLowerCase())
+      );
+
+      console.log(`📧 Sending deadline expiry emails to ${pendingFaculties.length} pending faculties`);
+
+      // Create email transporter
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASSWORD
+        }
+      });
+
+      // Send email to each pending faculty
+      for (const faculty of pendingFaculties) {
+        if (faculty.email) {
+          try {
+            await transporter.sendMail({
+              from: `"Smart Timetable System" <${process.env.EMAIL_USER}>`,
+              to: faculty.email,
+              subject: "Subject Preference Deadline Expired",
+              html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; }
+                    .header { background: linear-gradient(135deg, #dc2626, #ef4444); color: white; padding: 20px; border-radius: 10px 10px 0 0; text-align: center; }
+                    .content { padding: 30px; background: #fef2f2; }
+                    .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px; }
+                    .warning { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 15px 0; }
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <div class="header">
+                      <h1>⚠️ Deadline Expired</h1>
+                      <p>Subject Preference Submission</p>
+                    </div>
+                    <div class="content">
+                      <p>Dear <strong>${faculty.name}</strong>,</p>
+                      
+                      <div class="warning">
+                        <p><strong>Important Notice:</strong></p>
+                        <p>The deadline for submitting your subject preferences has <strong>expired</strong>.</p>
+                      </div>
+                      
+                      <p>You did not submit your subject preferences within the specified time period.</p>
+                      
+                      <p><strong>Immediate Action Required:</strong></p>
+                      <ul>
+                        <li>Contact the administration department immediately</li>
+                        <li>Explain your situation and request for an extension (if applicable)</li>
+                        <li>Submit your preferences as soon as possible after contacting admin</li>
+                      </ul>
+                      
+                      <p><strong>Contact Information:</strong></p>
+                      <ul>
+                        <li>Admin Email: ${process.env.ADMIN_EMAIL || 'admin@institution.edu'}</li>
+                        <li>Admin Office: [Your Institution's Admin Office Location]</li>
+                        <li>Phone: [Admin Contact Number]</li>
+                      </ul>
+                      
+                      <p><strong>Consequences of Not Submitting:</strong></p>
+                      <ul>
+                        <li>Subject allocation will be done based on availability</li>
+                        <li>You may not get your preferred subjects</li>
+                        <li>Teaching schedule may be assigned without considering your preferences</li>
+                      </ul>
+                      
+                      <p>Please act promptly to resolve this matter.</p>
+                      
+                      <p>Best regards,<br>
+                      <strong>Smart Timetable Administration</strong></p>
+                    </div>
+                    <div class="footer">
+                      <p>This is an automated notification. Please do not reply to this email.</p>
+                      <p>&copy; ${new Date().getFullYear()} Smart Timetable System. All rights reserved.</p>
+                    </div>
+                  </div>
+                </body>
+                </html>
+              `
+            });
+
+            console.log(`✅ Deadline expiry email sent to ${faculty.email}`);
+
+            // Also add a message in the faculty's dashboard
+            if (!faculty.messages) faculty.messages = [];
+            faculty.messages.push({
+              text: `⚠️ Subject preference deadline has expired. You did not submit your preferences. Please contact admin immediately.`,
+              type: "deadline",
+              date: new Date(),
+              read: false
+            });
+
+            await faculty.save();
+
+          } catch (emailErr) {
+            console.error(`❌ Failed to send email to ${faculty.email}:`, emailErr.message);
+          }
+        }
+      }
+
+      // Mark that notifications have been sent for this deadline
+      await Settings.findOneAndUpdate(
+        { key: "preferenceReminderSent" },
+        { value: deadline },
+        { upsert: true }
+      );
+
+      console.log(`✅ Deadline expiry notifications sent to ${pendingFaculties.length} faculties`);
+
+    } else if (Date.now() <= deadline) {
+      // If deadline hasn't passed yet, check for reminders (optional)
+      const hoursLeft = Math.ceil((deadline - Date.now()) / (1000 * 60 * 60));
+
+      if (hoursLeft <= 24 && reminderSent?.value !== deadline) {
+        // Send reminder emails (optional - you can implement this if needed)
+        console.log(`⏰ ${hoursLeft} hours left until deadline`);
+      }
+    }
+  } catch (err) {
+    console.error("❌ Deadline notification cron error:", err);
+  }
+});
+
+/* ================= SUBSTITUTION REQUEST EXPIRY CRON ================= */
+// Marks pending substitutionRequests as expired once deadlineAt passes.
+cron.schedule("*/1 * * * *", async () => {
+  try {
+    await SubstitutionRequests.updateMany(
+      { status: "pending", deadlineAt: { $exists: true, $lt: new Date() } },
+      { $set: { status: "expired" } }
+    );
+  } catch (err) {
+    console.error("❌ Substitution expiry cron error:", err);
+  }
+});
+
+const app = express();
+const PORT = 3000;
+
+/* ================= MIDDLEWARE ================= */
+app.use(cors());
+app.use(express.json());
+app.use(express.static(__dirname));
+app.use(express.static(path.resolve(__dirname, "../public")));
+
+/* ================= DB ================= */
+connectDB();
+
+/* ================= UPLOAD CONFIG ================= */
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+
+const storage = multer.diskStorage({
+  destination: uploadDir,
+  filename: (req, file, cb) => cb(null, "students.xlsx")
+});
+const upload = multer({ storage });
+
+/* ================= EXCEL SAFE READER ================= */
+function getCellValue(cell) {
+  if (!cell || cell.value == null) return "";
+
+  if (typeof cell.value === "object") {
+    if (cell.value.text) return cell.value.text.trim();
+    if (cell.value.richText)
+      return cell.value.richText.map(r => r.text).join("").trim();
+  }
+
+  return cell.value.toString().trim();
+}
+
+/* ================= HOME ================= */
+app.get("/", (req, res) =>
+  res.sendFile(path.join(__dirname, "index.html"))
+);
+
+/* ================= SESSION MANAGEMENT ROUTES ================= */
+
+// Serve session-manager.js explicitly
+app.get('/session-manager.js', (req, res) => {
+  const filePath = path.join(__dirname, 'session-manager.js');
+
+  // Check if file exists
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.sendFile(filePath);
+  } else {
+    // If file doesn't exist, return the content as a fallback
+    res.setHeader('Content-Type', 'application/javascript');
+    res.send(`
+// Auto-generated session manager fallback
+const SessionManager = {
+  SESSION_KEY: 'app_session',
+  
+  getSession() {
+    const sessionData = localStorage.getItem(this.SESSION_KEY);
+    if (!sessionData) return null;
+    try { return JSON.parse(sessionData); } catch { return null; }
+  },
+  
+  setSession(role, userData = {}) {
+    const session = {
+      loggedIn: true,
+      role: role,
+      username: userData.username || userData.email,
+      timestamp: Date.now(),
+      lastActivity: Date.now(),
+      userData: userData
+    };
+    localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+    return session;
+  },
+  
+  clearSession() { localStorage.removeItem(this.SESSION_KEY); },
+  
+  getDashboardPath(role) {
+    const paths = { admin: 'admin.html', faculty: 'faculty.html', student: 'student.html' };
+    return paths[role] || 'index.html';
+  },
+  
+  redirectToDashboard(role) { window.location.href = this.getDashboardPath(role); },
+  
+  forceLogout(message) {
+    if (message) sessionStorage.setItem('logout_message', message);
+    this.clearSession();
+    window.location.href = 'index.html';
+  }
+};
+window.SessionManager = SessionManager;
+    `);
+  }
+});
+
+// Validate admin session
+app.get("/api/validate/admin", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.json({ valid: false, message: "No username provided" });
+    }
+
+    const admin = await Admin.findOne({
+      username: { $regex: `^${username}$`, $options: "i" }
+    });
+
+    res.json({
+      valid: !!admin,
+      user: admin ? { username: admin.username, role: 'admin' } : null
+    });
+  } catch (err) {
+    console.error("Admin session validation error:", err);
+    res.status(500).json({ valid: false, error: err.message });
+  }
+});
+
+// Validate faculty session
+app.get("/api/validate/faculty", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.json({ valid: false, message: "No username provided" });
+    }
+
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${username}$`, $options: "i" },
+      approved: true
+    });
+
+    res.json({
+      valid: !!faculty,
+      user: faculty ? {
+        username: faculty.username,
+        name: faculty.name,
+        role: 'faculty'
+      } : null
+    });
+  } catch (err) {
+    console.error("Faculty session validation error:", err);
+    res.status(500).json({ valid: false, error: err.message });
+  }
+});
+
+// Validate student session
+app.get("/api/validate/student", async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.json({ valid: false, message: "No email provided" });
+    }
+
+    const student = await Student.findOne({
+      email: email.toLowerCase()
+    });
+
+    res.json({
+      valid: !!student,
+      user: student ? {
+        email: student.email,
+        name: student.name,
+        role: 'student'
+      } : null
+    });
+  } catch (err) {
+    console.error("Student session validation error:", err);
+    res.status(500).json({ valid: false, error: err.message });
+  }
+});
+
+// Get current session info
+app.get("/api/session/info", async (req, res) => {
+  try {
+    const { username, role } = req.query;
+
+    if (!username || !role) {
+      return res.json({ valid: false, message: "Incomplete session data" });
+    }
+
+    let userData = null;
+
+    if (role === 'admin') {
+      userData = await Admin.findOne({
+        username: { $regex: `^${username}$`, $options: "i" }
+      }).select('-password');
+    } else if (role === 'faculty') {
+      userData = await Faculty.findOne({
+        username: { $regex: `^${username}$`, $options: "i" }
+      }).select('-password -resetToken -resetTokenExpiry');
+    } else if (role === 'student') {
+      userData = await Student.findOne({
+        email: username.toLowerCase()
+      }).select('-password -loginToken -loginTokenExpiry');
+    }
+
+    res.json({
+      valid: !!userData,
+      user: userData,
+      role: role,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.error("Session info error:", err);
+    res.status(500).json({ valid: false, error: err.message });
+  }
+});
+
+// Track active tabs
+app.post("/api/tabs/update", async (req, res) => {
+  try {
+    const { tabId, role, action } = req.body;
+
+    if (!tabId || !role) {
+      return res.json({ success: false, message: "Missing data" });
+    }
+
+    const key = `${role}_active_tabs`;
+    const tabsData = await getStore(key);
+    const tabs = tabsData ? JSON.parse(tabsData) : {};
+
+    if (action === 'add') {
+      tabs[tabId] = Date.now();
+    } else if (action === 'remove') {
+      delete tabs[tabId];
+    }
+
+    // Clean up old tabs (inactive for more than 10 seconds)
+    const now = Date.now();
+    Object.keys(tabs).forEach(id => {
+      if (now - tabs[id] > 10000) {
+        delete tabs[id];
+      }
+    });
+
+    await setStore(key, JSON.stringify(tabs), 3600);
+
+    res.json({
+      success: true,
+      count: Object.keys(tabs).length
+    });
+  } catch (err) {
+    console.error("Tab tracking error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get active tab count
+app.get("/api/tabs/count", async (req, res) => {
+  try {
+    const { role } = req.query;
+
+    if (!role) {
+      return res.json({ success: false, message: "Role required" });
+    }
+
+    const key = `${role}_active_tabs`;
+    const tabsData = await getStore(key);
+    const tabs = tabsData ? JSON.parse(tabsData) : {};
+
+    res.json({
+      success: true,
+      count: Object.keys(tabs).length
+    });
+  } catch (err) {
+    console.error("Get tab count error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Force logout from all tabs
+app.post("/api/session/force-logout", async (req, res) => {
+  try {
+    const { username, role } = req.body;
+
+    if (!username || !role) {
+      return res.json({ success: false, message: "Missing data" });
+    }
+
+    // Clear all active tabs for this user
+    const key = `${role}_active_tabs`;
+    await delStore(key);
+
+    // Clear any other session data
+    if (role === 'admin') {
+      await Admin.updateOne(
+        { username: { $regex: `^${username}$`, $options: "i" } },
+        { $set: { forceLogout: true, forceLogoutTime: Date.now() } }
+      );
+    } else if (role === 'faculty') {
+      await Faculty.updateOne(
+        { username: { $regex: `^${username}$`, $options: "i" } },
+        { $set: { forceLogout: true, forceLogoutTime: Date.now() } }
+      );
+    } else if (role === 'student') {
+      await Student.updateOne(
+        { email: username.toLowerCase() },
+        { $set: { forceLogout: true, forceLogoutTime: Date.now() } }
+      );
+    }
+
+    res.json({ success: true, message: "All sessions terminated" });
+  } catch (err) {
+    console.error("Force logout error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Check if user was force logged out
+app.get("/api/session/check-force-logout", async (req, res) => {
+  try {
+    const { username, role } = req.query;
+
+    if (!username || !role) {
+      return res.json({ forced: false });
+    }
+
+    let forced = false;
+
+    if (role === 'admin') {
+      const admin = await Admin.findOne({
+        username: { $regex: `^${username}$`, $options: "i" }
+      });
+      forced = admin?.forceLogout || false;
+    } else if (role === 'faculty') {
+      const faculty = await Faculty.findOne({
+        username: { $regex: `^${username}$`, $options: "i" }
+      });
+      forced = faculty?.forceLogout || false;
+    } else if (role === 'student') {
+      const student = await Student.findOne({
+        email: username.toLowerCase()
+      });
+      forced = student?.forceLogout || false;
+    }
+
+    res.json({ forced });
+  } catch (err) {
+    console.error("Check force logout error:", err);
+    res.status(500).json({ forced: false, error: err.message });
+  }
+});
+
+// Clear force logout flag
+app.post("/api/session/clear-force-logout", async (req, res) => {
+  try {
+    const { username, role } = req.body;
+
+    if (!username || !role) {
+      return res.json({ success: false, message: "Missing data" });
+    }
+
+    if (role === 'admin') {
+      await Admin.updateOne(
+        { username: { $regex: `^${username}$`, $options: "i" } },
+        { $unset: { forceLogout: "", forceLogoutTime: "" } }
+      );
+    } else if (role === 'faculty') {
+      await Faculty.updateOne(
+        { username: { $regex: `^${username}$`, $options: "i" } },
+        { $unset: { forceLogout: "", forceLogoutTime: "" } }
+      );
+    } else if (role === 'student') {
+      await Student.updateOne(
+        { email: username.toLowerCase() },
+        { $unset: { forceLogout: "", forceLogoutTime: "" } }
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Clear force logout error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Heartbeat endpoint to keep session alive
+app.post("/api/session/heartbeat", async (req, res) => {
+  try {
+    const { username, role } = req.body;
+
+    if (!username || !role) {
+      return res.json({ success: false });
+    }
+
+    // Update last activity in database
+    if (role === 'admin') {
+      await Admin.updateOne(
+        { username: { $regex: `^${username}$`, $options: "i" } },
+        { $set: { lastActivity: Date.now() } }
+      );
+    } else if (role === 'faculty') {
+      await Faculty.updateOne(
+        { username: { $regex: `^${username}$`, $options: "i" } },
+        { $set: { lastActivity: Date.now() } }
+      );
+    } else if (role === 'student') {
+      await Student.updateOne(
+        { email: username.toLowerCase() },
+        { $set: { lastActivity: Date.now() } }
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Heartbeat error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+// Get session timeout settings
+app.get("/api/session/settings", (req, res) => {
+  res.json({
+    success: true,
+    settings: {
+      sessionTimeout: 30 * 60 * 1000, // 30 minutes
+      warningTime: 25 * 60 * 1000,     // 25 minutes
+      heartbeatInterval: 60 * 1000,    // 1 minute
+      maxConcurrentSessions: 10
+    }
+  });
+});
+
+/* ================= ADMIN LOGIN ================= */
+app.post("/admin/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const admin = await Admin.findOne({ username });
+    if (!admin) return res.json({ success: false });
+
+    const match = await bcrypt.compare(password, admin.password);
+    if (!match) return res.json({ success: false });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+/* ================= ADMIN FORGOT PASSWORD ================= */
+app.post("/admin/check-username", async (req, res) => {
+  try {
+    let { username } = req.body;
+    if (!username) return res.json({ exists: false });
+
+    username = username.trim();
+
+    const admin = await Admin.findOne({
+      username: { $regex: `^${username}$`, $options: "i" }
+    });
+
+    if (!admin) return res.json({ exists: false });
+
+    res.json({ exists: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ exists: false });
+  }
+});
+
+app.post("/admin/reset-password", async (req, res) => {
+  try {
+    let { username, newPassword } = req.body;
+
+    if (!username || !newPassword) {
+      return res.json({ success: false, message: "Missing data" });
+    }
+
+    username = username.trim();
+
+    const admin = await Admin.findOne({
+      username: { $regex: `^${username}$`, $options: "i" }
+    });
+
+    if (!admin) {
+      return res.json({ success: false, message: "Admin not found" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    admin.password = hashedPassword;
+    await admin.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+/* ================= FACULTY AUTH ================= */
+app.post("/faculty/register", async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      department,
+      username,
+      password,
+      confirmPassword,
+      experience,
+      role
+    } = req.body;
+
+    // ADD DEBUG LOGGING
+    console.log("Registration attempt for username:", username);
+
+    if (!name || !email || !department || !username || !password || !confirmPassword || !experience || !role) {
+      return res.json({
+        success: false,
+        message: "All fields are required"
+      });
+    }
+
+    if (!/^[A-Za-z\s.]{3,50}$/.test(name)) {
+      return res.json({ success: false, message: "Invalid name" });
+    }
+
+    if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
+      return res.json({ success: false, message: "Invalid email format" });
+    }
+
+    if (!/^[A-Za-z0-9_-]{4,20}$/.test(username)) {
+      console.log("Username validation failed for:", username);
+      return res.json({ success: false, message: "Invalid Faculty ID" });
+    }
+
+    console.log("Username validation passed for:", username);
+
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,16}$/;
+
+    if (!passwordRegex.test(password)) {
+      return res.json({ success: false, message: "Password must be 8–16 characters and include uppercase, lowercase, number and special character" });
+    }
+
+    if (password !== confirmPassword) {
+      return res.json({ success: false, message: "Passwords do not match" });
+    }
+
+    if (experience < 0 || experience > 50) {
+      return res.json({ success: false, message: "Experience must be between 0 and 50 years" });
+    }
+
+    // Check if username exists (case insensitive)
+    const existingUser = await Faculty.findOne({
+      username: { $regex: new RegExp(`^${username}$`, 'i') }
+    });
+
+    if (existingUser) {
+      console.log("Username already exists:", username);
+      return res.json({ success: false, message: "Username already exists" });
+    }
+
+    // Check if email exists
+    const existingEmail = await Faculty.findOne({
+      email: { $regex: new RegExp(`^${email}$`, 'i') }
+    });
+
+    if (existingEmail) {
+      console.log("Email already exists:", email);
+      return res.json({ success: false, message: "Email already registered" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await Faculty.create({
+      name,
+      email,
+      department,
+      username,
+      password: hashedPassword,
+      experience,
+      role,
+      approved: false,
+      preferences: [],
+      submitted: false
+    });
+
+    console.log("Faculty created successfully:", username);
+    res.json({ success: true, message: "Registration submitted for approval" });
+
+  } catch (err) {
+    console.error("❌ SERVER ERROR:", err);
+    console.error("Error details:", {
+      message: err.message,
+      code: err.code,
+      keyPattern: err.keyPattern,
+      keyValue: err.keyValue
+    });
+
+    // Check if it's a duplicate key error
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern)[0];
+      return res.json({
+        success: false,
+        message: `${field} already exists. Please use a different ${field}.`
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Server error: " + err.message
+    });
+  }
+});
+
+/* ================= MARK ABSENCE ================= */
+app.post("/mark-absence", async (req, res) => {
+  try {
+    const { facultyId, facultyName, date, timeSlot, subject } = req.body;
+
+    if (!facultyId || !facultyName || !date || !timeSlot || !subject) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    // Prevent duplicates (same faculty + same day + same timeSlot)
+    const dateObj = new Date(date);
+    if (!isNaN(dateObj.getTime())) {
+      const startOfDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 0, 0, 0, 0);
+      const endOfDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 23, 59, 59, 999);
+      const existing = await Absence.findOne({
+        facultyId,
+        date: { $gte: startOfDay, $lte: endOfDay },
+        timeSlot: String(timeSlot)
+      }).lean();
+      if (existing) {
+        return res.json({ success: true, message: "Absence marked successfully" });
+      }
+    }
+
+    const newAbsence = new Absence({
+      facultyId,
+      facultyName,
+      date,
+      timeSlot,
+      subject
+    });
+
+    await newAbsence.save();
+    res.json({ success: true, message: "Absence marked successfully" });
+  } catch (err) {
+    console.error("Error marking absence:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ================= FACULTY DELETE OWN ABSENCE ================= */
+app.delete("/faculty/delete-absence/:id", async (req, res) => {
+  try {
+    const absenceId = req.params.id;
+
+    // Basic ID validation
+    if (!mongoose.Types.ObjectId.isValid(absenceId)) {
+      return res.status(400).json({ message: "Invalid absence id" });
+    }
+
+    // Authorization (match existing session validation style)
+    const username = req.headers["x-username"];
+    const role = req.headers["x-role"];
+
+    if (!username || role !== "faculty") {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${String(username).trim()}$`, $options: "i" },
+      approved: true
+    }).select("_id username").lean();
+
+    if (!faculty) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const absence = await Absence.findById(absenceId).lean();
+    if (!absence) {
+      return res.status(404).json({ message: "Absence not found" });
+    }
+
+    // Ownership check
+    const absenceFacultyId = absence.facultyId ? absence.facultyId.toString() : "";
+    if (absenceFacultyId !== faculty._id.toString()) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    // Delete the record
+    await Absence.findByIdAndDelete(absenceId);
+
+    // Optional cleanup: remove related substitutionRequests + per-slot absences (if any)
+    try {
+      const dateObj = absence.date ? new Date(absence.date) : null;
+      const slots = [];
+      if (absence.timeSlot) slots.push(String(absence.timeSlot));
+      if (Array.isArray(absence.timeSlots)) {
+        absence.timeSlots.forEach(s => { if (s) slots.push(String(s)); });
+      }
+
+      // Normalize date to day range for matching mixed absence shapes
+      if (dateObj && slots.length > 0) {
+        const startOfDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 0, 0, 0, 0);
+        const endOfDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 23, 59, 59, 999);
+
+        // Delete related substitution requests (new system)
+        await SubstitutionRequests.deleteMany({
+          fromFacultyId: faculty._id,
+          date: { $gte: startOfDay, $lte: endOfDay },
+          timeSlot: { $in: slots }
+        });
+
+        // Delete per-slot absence records created for substitution workflow (old /mark-absence shape)
+        await Absence.deleteMany({
+          _id: { $ne: new mongoose.Types.ObjectId(absenceId) },
+          facultyId: faculty._id,
+          date: { $gte: startOfDay, $lte: endOfDay },
+          timeSlot: { $in: slots }
+        });
+      }
+    } catch (cleanupErr) {
+      console.error("Absence cleanup error:", cleanupErr);
+    }
+
+    return res.json({ message: "Absence deleted successfully" });
+  } catch (err) {
+    console.error("Faculty delete absence error:", err);
+    return res.status(500).json({ message: "Error deleting absence" });
+  }
+});
+
+/* ================= GET ALL ABSENCES ================= */
+app.get("/absences", async (req, res) => {
+  try {
+    console.log("Absences API hit");
+    const absences = await Absence.find()
+      .populate("facultyId", "name email")
+      .sort({ date: -1 })
+      .lean();
+
+    const formatted = (absences || []).map(a => ({
+      ...a,
+      timeSlots: Array.isArray(a.timeSlots)
+        ? a.timeSlots
+        : (a.timeSlot ? [a.timeSlot] : [])
+    }));
+
+    return res.json(formatted);
+  } catch (err) {
+    console.error("Error fetching absences:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+/**
+ * Sends an email notification about a substitution request.
+ */
+async function sendSubstitutionEmail(toEmail, facultyName, date, timeSlot, subject) {
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+
+    const mailOptions = {
+      from: `"Smart Timetable System" <${process.env.EMAIL_USER}>`,
+      to: toEmail,
+      subject: "Substitution Request Notification",
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+          <h2 style="color: #2c3e50;">New Substitution Request</h2>
+          <p>Dear Faculty,</p>
+          <p>You have received a substitution request for the following session:</p>
+          <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+            <tr>
+              <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Faculty Name:</td>
+              <td style="padding: 8px; border-bottom: 1px solid #ddd;">${facultyName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Date:</td>
+              <td style="padding: 8px; border-bottom: 1px solid #ddd;">${new Date(date).toDateString()}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Time Slot:</td>
+              <td style="padding: 8px; border-bottom: 1px solid #ddd;">${timeSlot}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Subject:</td>
+              <td style="padding: 8px; border-bottom: 1px solid #ddd;">${subject}</td>
+            </tr>
+          </table>
+          <p style="margin-top: 20px;">Please log in to the Smart Timetable dashboard to respond to this request.</p>
+          <p>Best regards,<br>Smart Timetable Administration</p>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log("✅ Substitution email sent successfully to:", toEmail);
+  } catch (error) {
+    console.error("❌ Error sending substitution email:", error);
+  }
+}
+
+/* ================= SEND NOTIFICATION ================= */
+app.post("/send-notification", async (req, res) => {
+  try {
+    const { sender, receiver, facultyName, date, timeSlot, subject } = req.body;
+
+    if (!sender || !receiver || !facultyName || !date || !timeSlot || !subject) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    const newMessage = new Message({
+      sender,
+      receiver,
+      recipientId: receiver,
+      facultyName,
+      date,
+      timeSlot,
+      subject,
+      isRead: false,
+      status: "pending"
+    });
+
+    await newMessage.save();
+
+    // Trigger email notification asynchronously
+    try {
+      const receiverFaculty = await Faculty.findById(receiver);
+      if (receiverFaculty && receiverFaculty.email) {
+        sendSubstitutionEmail(receiverFaculty.email, facultyName, date, timeSlot, subject);
+      }
+    } catch (emailErr) {
+      console.error("Error triggering email notification:", emailErr);
+    }
+
+    res.json({ success: true, message: "Notification sent successfully" });
+  } catch (err) {
+    console.error("Error sending notification:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ================= GET MESSAGES FOR FACULTY ================= */
+app.get("/messages/:facultyId", async (req, res) => {
+  try {
+    const { facultyId } = req.params;
+
+    if (!facultyId) {
+      return res.status(400).json({ success: false, message: "Faculty ID is required." });
+    }
+
+    // Return messages where the faculty is either sender or receiver
+    const messages = await Message.find({
+      $or: [{ sender: facultyId }, { receiver: facultyId }]
+    }).sort({ createdAt: -1 });
+
+    res.json({ success: true, data: messages });
+  } catch (err) {
+    console.error("Error fetching messages:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ================= UPDATE MESSAGE STATUS ================= */
+app.patch("/messages/status/:messageId", async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { status } = req.body;
+
+    if (!['accepted', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid status. Use 'accepted' or 'rejected'." });
+    }
+
+    const updatedMessage = await Message.findByIdAndUpdate(
+      messageId,
+      { status },
+      { new: true }
+    );
+
+    if (!updatedMessage) {
+      return res.status(404).json({ success: false, message: "Message not found." });
+    }
+
+    res.json({ success: true, message: `Message ${status} successfully`, data: updatedMessage });
+  } catch (err) {
+    console.error("Error updating message status:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ================= RESPOND TO MESSAGE (POST) ================= */
+app.post("/respond-message", async (req, res) => {
+  try {
+    const { messageId, response } = req.body;
+
+    if (!messageId || !response) {
+      return res.status(400).json({ success: false, message: "messageId and response are required." });
+    }
+
+    if (!['accepted', 'rejected'].includes(response)) {
+      return res.status(400).json({ success: false, message: "Invalid response. Use 'accepted' or 'rejected'." });
+    }
+
+    const updatedMessage = await Message.findByIdAndUpdate(
+      messageId,
+      { status: response },
+      { new: true }
+    );
+
+    if (!updatedMessage) {
+      return res.status(404).json({ success: false, message: "Message not found." });
+    }
+
+    res.json({ success: true, message: `Message ${response} successfully`, data: updatedMessage });
+  } catch (err) {
+    console.error("Error responding to message:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+//faculty-login
+app.post("/faculty/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const cleanUsername = username.trim().toLowerCase();
+
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${cleanUsername}$`, $options: "i" }
+    });
+
+
+    if (!faculty || !faculty.approved) return res.json({ success: false });
+
+    const match = await bcrypt.compare(password, faculty.password);
+    if (!match) return res.json({ success: false });
+
+    console.log("✅ Faculty Login Success - Username:", faculty.username, "ID:", faculty._id);
+
+    res.json({
+      success: true,
+      username: faculty.username.trim().toLowerCase(),
+      facultyName: faculty.name,      // send faculty name
+      facultyId: faculty._id,         // send faculty MongoDB _id
+      designation: faculty.role       // send faculty role/designation
+    });
+
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+/* ================= ADMIN – FACULTY MANAGEMENT ================= */
+app.get("/admin/pending-faculty", async (req, res) => {
+  try {
+    const faculty = await Faculty.find({ approved: false, ...NON_TEST_FACULTY_FILTER });
+    res.json({ faculty });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ faculty: [] });
+  }
+});
+
+
+app.post("/admin/approve-faculty", async (req, res) => {
+  try {
+    const { facultyId } = req.body;
+
+    const faculty = await Faculty.findByIdAndUpdate(facultyId, { approved: true }, { new: true });
+    if (!faculty) return res.json({ success: false, message: "Faculty not found" });
+
+    // Send approval email
+    if (faculty.email) {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASSWORD
+        }
+      });
+
+      await transporter.sendMail({
+        from: `"Smart Timetable" <${process.env.EMAIL_USER}>`,
+        to: faculty.email,
+        subject: "Faculty Registration Approved",
+        html: `<p>Hello ${faculty.name},</p>
+               <p>Congratulations! Your faculty registration has been <b>approved</b> by the admin.</p>
+               <p>You can now log in to your faculty dashboard using your username and password.</p>
+               <p>Welcome aboard!</p>`
+      });
+    }
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+app.get("/admin/approved-faculty", async (req, res) => {
+  try {
+    const faculty = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER });
+    res.json({ faculty });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ faculty: [] });
+  }
+});
+
+app.post("/admin/remove-faculty", async (req, res) => {
+  try {
+    const { facultyId } = req.body;
+
+    // 1️⃣ Find faculty first
+    const faculty = await Faculty.findById(facultyId);
+    if (!faculty) {
+      return res.json({ success: false, message: "Faculty not found" });
+    }
+
+    const username = faculty.username;
+
+    // 2️⃣ DELETE ALL RELATED DATA
+    await FacultyPreference.deleteMany({ facultyUsername: username });
+    await SubmittedPreference.deleteMany({ facultyUsername: username });
+    await FacultyAllocation.deleteMany({ facultyUsername: username });
+
+    // 3️⃣ DELETE FACULTY
+    await Faculty.findByIdAndDelete(facultyId);
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Remove faculty error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+/* ================= REJECT FACULTY ================= */
+app.post("/admin/reject-faculty", async (req, res) => {
+  try {
+    const { facultyId, reason } = req.body;
+
+    if (!reason || reason.trim() === "")
+      return res.json({ success: false, message: "Rejection reason required" });
+
+    const faculty = await Faculty.findById(facultyId);
+    if (!faculty) return res.json({ success: false, message: "Faculty not found" });
+
+    // Option 1: Remove the faculty
+    await Faculty.findByIdAndDelete(facultyId);
+
+    // Option 2 (Optional): Keep record with rejected flag
+    // faculty.rejected = true;
+    // faculty.rejectionReason = reason;
+    // await faculty.save();
+
+    // Notify faculty via email
+    if (faculty.email) {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASSWORD
+        }
+      });
+
+      await transporter.sendMail({
+        from: `"Smart Timetable" <${process.env.EMAIL_USER}>`,
+        to: faculty.email,
+        subject: "Faculty Registration Rejected",
+        html: `<p>Hello ${faculty.name},</p>
+               <p>Your registration has been <b>rejected</b> by the admin.</p>
+               <p><b>Reason:</b> ${reason}</p>
+               <p>If you think this was a mistake, contact the admin.</p>`
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+/* ================= FACULTY PREFERENCES ================= */
+app.post("/faculty/submit-preferences", async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: "preferenceDeadline" });
+
+    if (setting && Date.now() > Number(setting.value)) {
+      return res.status(403).json({
+        success: false,
+        message: "Preference submission deadline expired"
+      });
+    }
+
+    const { username, theoryPreferences, labPreferences, final } = req.body;
+
+    if (
+      !username ||
+      !Array.isArray(theoryPreferences) ||
+      !Array.isArray(labPreferences)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid data"
+      });
+    }
+
+    // Get actual subject counts
+    const theorySubjects = await Subject.find({ type: "Theory" });
+    const labSubjects = await Subject.find({ type: { $in: ["Lab", "Project"] } });
+
+    const maxTheoryPriority = theorySubjects.length;
+    const maxLabPriority = labSubjects.length;
+
+    // Validate theory priorities don't exceed the number of theory subjects
+    for (const pref of theoryPreferences) {
+      if (pref.priority > maxTheoryPriority) {
+        return res.status(400).json({
+          success: false,
+          message: `Theory priority ${pref.priority} exceeds maximum allowed (${maxTheoryPriority})`
+        });
+      }
+      if (pref.priority < 1) {
+        return res.status(400).json({
+          success: false,
+          message: `Theory priority ${pref.priority} must be at least 1`
+        });
+      }
+    }
+
+    // Validate lab priorities don't exceed the number of lab subjects
+    for (const pref of labPreferences) {
+      if (pref.priority > maxLabPriority) {
+        return res.status(400).json({
+          success: false,
+          message: `Lab priority ${pref.priority} exceeds maximum allowed (${maxLabPriority})`
+        });
+      }
+      if (pref.priority < 1) {
+        return res.status(400).json({
+          success: false,
+          message: `Lab priority ${pref.priority} must be at least 1`
+        });
+      }
+    }
+
+    // Check for duplicate priorities
+    const theoryPriorities = theoryPreferences.map(p => p.priority);
+    const labPriorities = labPreferences.map(p => p.priority);
+
+    if (new Set(theoryPriorities).size !== theoryPriorities.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Duplicate theory priorities are not allowed"
+      });
+    }
+
+    if (new Set(labPriorities).size !== labPriorities.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Duplicate lab priorities are not allowed"
+      });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+
+    // Save in FacultyPreference (working copy)
+    const facultyPref = await FacultyPreference.findOneAndUpdate(
+      { facultyUsername: cleanUsername },
+      {
+        $set: {
+          facultyUsername: cleanUsername,
+          theoryPreferences,
+          labPreferences,
+          final: final === true,
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true, new: true }
+    );
+
+    // IF FINAL → save snapshot in SubmittedPreference
+    if (final === true) {
+      const faculty = await Faculty.findOne({
+        username: { $regex: `^${cleanUsername}$`, $options: "i" }
+      });
+
+      await SubmittedPreference.findOneAndUpdate(
+        { facultyUsername: cleanUsername },
+        {
+          $set: {
+            facultyUsername: cleanUsername,
+            name: faculty?.name || "Unknown",
+            designation: faculty?.role || "Not specified",
+            experience: faculty?.experience || 0,
+            theoryPreferences,
+            labPreferences,
+            final: true
+          }
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Save preference error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+
+
+app.get("/faculty/get-preferences", async (req, res) => {
+  try {
+    const { username } = req.query;
+    if (!username) {
+      return res.json({ preferences: [], final: false, locked: false });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+
+    const deadlineSetting = await Settings.findOne({ key: "preferenceDeadline" });
+    const locked = deadlineSetting
+      ? Date.now() > Number(deadlineSetting.value)  // lock only AFTER deadline
+      : false;
+
+    let prefDoc = await FacultyPreference.findOne({
+      facultyUsername: cleanUsername
+    });
+
+    // 🔁 fallback to submitted snapshot
+    if (!prefDoc) {
+      prefDoc = await SubmittedPreference.findOne({
+        facultyUsername: cleanUsername
+      });
+    }
+
+
+
+
+    res.json({
+      facultyUsername: username,
+      theoryPreferences: prefDoc?.theoryPreferences || [],
+      labPreferences: prefDoc?.labPreferences || [],
+      final: prefDoc?.final || false,
+      locked
+    });
+
+
+  } catch (err) {
+    console.error("Load preference error:", err);
+    res.status(500).json({ preferences: [], final: false, locked: false });
+  }
+});
+
+// DELETE all preferences for a faculty (Reset button)
+app.post("/faculty/reset-preferences", async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ success: false, message: "Username required" });
+
+    const cleanUsername = username.trim().toLowerCase();
+
+    await FacultyPreference.deleteMany({ facultyUsername: { $regex: `^${cleanUsername}$`, $options: "i" } });
+
+
+
+
+    res.json({ success: true, message: "Preferences reset successfully" });
+  } catch (err) {
+    console.error("Reset preferences error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+
+/* ================= SUBJECTS ================= */
+/* ================= GET/SET ACTIVE SEMESTER ================= */
+app.get("/api/active-semester", async (req, res) => {
+  try {
+    let setting = await Settings.findOne({ key: "semesterType" });
+    if (!setting) {
+      setting = new Settings({ key: "semesterType", value: "ALL" });
+      await setting.save();
+    }
+    res.json({ success: true, semesterType: setting.value });
+  } catch (err) {
+    console.error("Error fetching active semester:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+app.post("/admin/set-active-semester", async (req, res) => {
+  try {
+    console.log("BODY:", req.body);
+    const { semesterType } = req.body;
+    if (!["ALL", "ODD", "EVEN"].includes(semesterType)) {
+      return res.status(400).json({ success: false, message: "Invalid semester type" });
+    }
+
+    await Settings.findOneAndUpdate(
+      { key: "semesterType" },
+      { value: semesterType },
+      { upsert: true }
+    );
+
+    res.json({ success: true, message: "Active semester updated successfully" });
+  } catch (err) {
+    console.error("Error setting active semester:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+/* ================= GET SUBJECTS FOR ADMIN ================= */
+/* ================= GET SUBJECTS ================= */
+app.get("/api/subjects", async (req, res) => {
+  try {
+    const { forFaculty } = req.query;
+
+    let query = {};
+    if (forFaculty === "true") {
+      const setting = await Settings.findOne({ key: "semesterType" });
+      const semesterType = setting ? setting.value : "ALL";
+
+      if (semesterType === "ODD") {
+        query.semester = { $mod: [2, 1] };
+      } else if (semesterType === "EVEN") {
+        query.semester = { $mod: [2, 0] };
+      }
+    }
+
+    const subjects = await Subject.find(query)
+      .sort({ semester: 1, code: 1 })
+      .lean();
+
+    console.log(`Found ${subjects.length} subjects in database`);
+
+    // Map subjects to ensure consistent field names
+    const mappedSubjects = subjects.map(sub => ({
+      _id: sub._id,
+      semester: sub.semester,
+      name: sub.name,
+      code: sub.code,
+      abbreviation: sub.abbreviation,
+      credit: sub.credit,
+      weeklyHours: sub.weeklyHours || sub.hours || 0,
+      type: sub.type,
+      parallelGroupId: sub.parallelGroupId || ""
+    }));
+
+    res.json(mappedSubjects);
+  } catch (err) {
+    console.error("Error fetching subjects:", err);
+    res.status(500).json([]);
+  }
+});
+
+app.post("/api/subjects", async (req, res) => {
+  try {
+    const { name, code, abbreviation, type, hours, weeklyHours, credit, semester, department } = req.body;
+
+    console.log("Incoming subject data:", req.body);
+
+    // Determine which hours field to use
+    const subjectHours = hours || weeklyHours;
+
+    // FIXED: Check for undefined/null, not falsy (so 0 is allowed)
+    if (semester === undefined || semester === null || semester === '') {
+      return res.json({
+        success: false,
+        message: "Semester is required"
+      });
+    }
+
+    if (!name || name.trim() === '') {
+      return res.json({
+        success: false,
+        message: "Subject name is required"
+      });
+    }
+
+    if (!code || code.trim() === '') {
+      return res.json({
+        success: false,
+        message: "Subject code is required"
+      });
+    }
+
+    if (!abbreviation || abbreviation.trim() === '') {
+      return res.json({
+        success: false,
+        message: "Abbreviation is required"
+      });
+    }
+
+    // FIXED: Allow credit to be 0
+    if (credit === undefined || credit === null || credit === '') {
+      return res.json({
+        success: false,
+        message: "Credit is required"
+      });
+    }
+
+    if (subjectHours === undefined || subjectHours === null || subjectHours === '') {
+      return res.json({
+        success: false,
+        message: "Weekly hours is required"
+      });
+    }
+
+
+    if (!department || department.trim() === '') {
+      return res.json({
+        success: false,
+        message: "Department is required"
+      });
+    }
+
+    if (!type || type.trim() === '') {
+      return res.json({
+        success: false,
+        message: "Subject type is required"
+      });
+    }
+
+    const exists = await Subject.findOne({
+      code: code.toUpperCase(),
+      department: department.toUpperCase()
+    });
+
+    if (exists) {
+      return res.json({
+        success: false,
+        message: "Subject with this code already exists in this department"
+      });
+    }
+
+    const subject = new Subject({
+      semester: Number(semester),
+      name,
+      code: code.toUpperCase(),
+      abbreviation: abbreviation.toUpperCase(),
+      hours: Number(subjectHours),
+      weeklyHours: Number(subjectHours),
+      credit: Number(credit),
+      type: type.charAt(0).toUpperCase() + type.slice(1).toLowerCase(),
+      department: department.toUpperCase(),
+      available: true,
+      allocated: false,
+      courseType: "Core",
+      parallelGroupId: req.body.parallelGroupId || ""
+    });
+
+    await subject.save();
+
+    res.json({
+      success: true,
+      message: "Subject added successfully"
+    });
+
+  } catch (err) {
+    console.error("Add Subject Error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
+// DELETE a subject by ID
+/* ================= DELETE SUBJECT ================= */
+app.delete("/api/subjects/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid subject ID"
+      });
+    }
+
+    const result = await Subject.findByIdAndDelete(id);
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "Subject not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Subject deleted successfully"
+    });
+  } catch (err) {
+    console.error("Delete subject error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete subject"
+    });
+  }
+});
+
+/* ================= UPDATED FACULTY TIME PREFERENCES ROUTES ================= */
+// Save faculty time preferences
+app.post("/faculty/submit-time-preferences", async (req, res) => {
+  try {
+    const { username, preferences, canTakeBackToBack } = req.body;
+    if (!username) return res.status(400).json({ success: false, message: "Username required" });
+
+    await Faculty.findOneAndUpdate(
+      { username },
+      {
+        timePreferences: preferences || [],
+        canTakeBackToBack: canTakeBackToBack || false
+      },
+      { new: true }
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Save time preferences error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+
+// Get faculty time preferences
+app.get("/faculty/get-time-preferences", async (req, res) => {
+  try {
+    const { username } = req.query;
+    if (!username) return res.json({ preferences: [], canTakeBackToBack: false });
+
+    const faculty = await Faculty.findOne({ username });
+    if (!faculty) return res.json({ preferences: [], canTakeBackToBack: false });
+
+    res.json({
+      preferences: faculty.timePreferences || [],
+      canTakeBackToBack: typeof faculty.canTakeBackToBack === "boolean"
+        ? faculty.canTakeBackToBack
+        : false
+    });
+  } catch (err) {
+    console.error("Get time preferences error:", err);
+    res.status(500).json({ preferences: [], canTakeBackToBack: false });
+  }
+});
+
+app.get("/admin/get-subjects", async (req, res) => {
+  try {
+    const subjects = await Subject.find({})
+      .sort({ semester: 1, code: 1 })
+      .lean();
+
+    console.log(`Found ${subjects.length} subjects in database`);
+
+    // Map subjects to ensure consistent field names
+    const mappedSubjects = subjects.map(sub => ({
+      _id: sub._id,
+      semester: sub.semester,
+      name: sub.name,
+      code: sub.code,
+      abbreviation: sub.abbreviation,
+      credit: sub.credit,
+      weeklyHours: sub.weeklyHours || sub.hours || 0,
+      type: sub.type,
+      parallelGroupId: sub.parallelGroupId || ""
+    }));
+
+    res.json(mappedSubjects);
+  } catch (err) {
+    console.error("Error fetching subjects:", err);
+    res.status(500).json([]);
+  }
+});
+
+
+/* ================= STUDENT LOGIN ================= */
+app.post("/student/login", async (req, res) => {
+  try {
+    let { email, password } = req.body;
+    if (!email || !password)
+      return res.json({ success: false, message: "Email and password required" });
+
+    email = email.trim().toLowerCase();
+    const student = await Student.findOne({ email });
+    if (!student)
+      return res.json({ success: false, message: "Invalid credentials" });
+
+    // Compare with registration number (case-insensitive or exact)
+    // If regNo is stored in uppercase in DB, convert password to uppercase
+    const isPasswordValid = password.trim().toUpperCase() === student.regNo.toUpperCase();
+
+    if (!isPasswordValid)
+      return res.json({ success: false, message: "Invalid credentials" });
+
+    res.json({
+      success: true,
+      student: {
+        name: student.name,
+        email: student.email,
+        regNo: student.regNo
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+app.post("/student/request-login", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const student = await Student.findOne({ email: email.toLowerCase() });
+    if (!student) {
+      return res.json({ success: false, message: "Email not registered" });
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+
+    student.loginToken = token;
+    student.loginTokenExpiry = Date.now() + 15 * 60 * 1000;
+    await student.save();
+
+    const loginLink = `http://localhost:3000/student-login.html?token=${token}`;
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+
+    await transporter.sendMail({
+      from: `"Smart Timetable" <${process.env.EMAIL_USER}>`,
+      to: student.email,
+      subject: "Student Login Link",
+      html: `
+        <p>Hello ${student.name},</p>
+        <p>Click below to login:</p>
+        <a href="${loginLink}">Login to Student Dashboard</a>
+        <p>This link expires in 15 minutes.</p>
+      `
+    });
+
+    res.json({ success: true, message: "Login link sent to email" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+app.get("/student/login-via-link", async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    const student = await Student.findOne({
+      loginToken: token,
+      loginTokenExpiry: { $gt: Date.now() }
+    });
+
+    if (!student) {
+      return res.send("Invalid or expired link");
+    }
+
+    student.loginToken = null;
+    student.loginTokenExpiry = null;
+    await student.save();
+
+    res.redirect(
+      `/student-dashboard.html?email=${student.email}&role=student`
+    );
+
+  } catch (err) {
+    console.error(err);
+    res.send("Login failed");
+  }
+});
+
+/* ================= ADMIN ALL PREFERENCES ================= */
+app.get("/admin/all-preferences", async (req, res) => {
+  try {
+    const prefs = await SubmittedPreference.find({ final: true });
+
+
+
+    const result = [];
+
+    for (const p of prefs) {
+      const faculty = await Faculty.findOne({
+        username: { $regex: `^${p.facultyUsername}$`, $options: "i" }
+      });
+
+
+      // 🔥 SKIP REMOVED FACULTY
+
+      if (!faculty) {
+        console.warn("Faculty missing, skipping:", p.facultyUsername);
+        continue;
+      }
+
+
+
+      result.push({
+        facultyUsername: p.facultyUsername,
+        facultyName: faculty.name,
+        designation: faculty.role,
+        experience: faculty.experience,
+        theoryPreferences: p.theoryPreferences,
+        labPreferences: p.labPreferences
+      });
+    }
+
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json([]);
+  }
+});
+
+
+// GET /admin/sorted-preferences - FIXED VERSION
+app.get("/admin/sorted-preferences", async (req, res) => {
+  try {
+    console.log("Fetching sorted preferences...");
+
+    // Get final submitted preferences
+    const prefs = await SubmittedPreference.find({ final: true }).lean();
+    console.log(`Found ${prefs.length} submitted preferences`);
+
+    // Get all approved faculties
+    const faculties = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER }).lean();
+    console.log(`Found ${faculties.length} approved faculties`);
+
+    // Create a map of faculty usernames for quick lookup
+    const facultyMap = {};
+    faculties.forEach(f => {
+      const username = f.username.trim().toLowerCase();
+      facultyMap[username] = {
+        name: f.name,
+        role: f.role,
+        experience: f.experience,
+        username: f.username
+      };
+    });
+
+    // Get submitted usernames
+    const submittedUsernames = prefs.map(p =>
+      p.facultyUsername.trim().toLowerCase()
+    );
+
+    console.log("Submitted usernames:", submittedUsernames);
+
+    // Process submitted preferences
+    const submitted = [];
+    for (const pref of prefs) {
+      const username = pref.facultyUsername.trim().toLowerCase();
+      const faculty = facultyMap[username];
+
+      if (!faculty) {
+        console.warn(`Faculty not found for username: ${username}`);
+        continue;
+      }
+
+      // Ensure theoryPreferences is an array
+      const theoryPrefs = Array.isArray(pref.theoryPreferences) ? pref.theoryPreferences : [];
+      const labPrefs = Array.isArray(pref.labPreferences) ? pref.labPreferences : [];
+
+      // Sort by priority
+      const sortedTheory = theoryPrefs.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+      const sortedLab = labPrefs.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+
+      submitted.push({
+        designation: faculty.role || "Not specified",
+        experience: faculty.experience || 0,
+        name: faculty.name || "Unknown",
+        username: faculty.username || username,
+        theoryPreferences: sortedTheory,
+        labPreferences: sortedLab
+      });
+    }
+
+    // Role hierarchy for sorting
+    const roleRank = {
+      "Professor": 3,
+      "Associate Professor": 2,
+      "Assistant Professor": 1
+    };
+
+    // Sort by role hierarchy then experience
+    submitted.sort((a, b) => {
+      const roleA = roleRank[a.designation] || 0;
+      const roleB = roleRank[b.designation] || 0;
+
+      if (roleB !== roleA) {
+        return roleB - roleA; // Higher rank first
+      }
+
+      return (b.experience || 0) - (a.experience || 0); // More experience first
+    });
+
+    console.log(`Processed ${submitted.length} submitted faculty`);
+
+    // Faculties who haven't submitted
+    const notSubmitted = [];
+    faculties.forEach(faculty => {
+      const username = faculty.username.trim().toLowerCase();
+      if (!submittedUsernames.includes(username)) {
+        notSubmitted.push({
+          designation: faculty.role || "Not specified",
+          experience: faculty.experience || 0,
+          name: faculty.name || "Unknown",
+          username: faculty.username || "N/A"
+        });
+      }
+    });
+
+    // Sort not submitted by role and experience
+    notSubmitted.sort((a, b) => {
+      const roleA = roleRank[a.designation] || 0;
+      const roleB = roleRank[b.designation] || 0;
+
+      if (roleB !== roleA) {
+        return roleB - roleA;
+      }
+
+      return (b.experience || 0) - (a.experience || 0);
+    });
+
+    console.log(`Found ${notSubmitted.length} not submitted faculty`);
+
+    res.json({
+      success: true,
+      submitted,
+      notSubmitted
+    });
+
+  } catch (err) {
+    console.error("Sorted preferences error:", err);
+    res.status(500).json({
+      success: false,
+      submitted: [],
+      notSubmitted: [],
+      error: err.message
+    });
+  }
+});
+
+// DEBUG: Get all submitted preferences raw data
+app.get("/admin/debug-preferences", async (req, res) => {
+  try {
+    const prefs = await SubmittedPreference.find({}).lean();
+    console.log("DEBUG - All preferences raw:", JSON.stringify(prefs, null, 2));
+
+    // Also check the collection
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    const collectionNames = collections.map(c => c.name);
+
+    res.json({
+      success: true,
+      preferences: prefs,
+      total: prefs.length,
+      collections: collectionNames
+    });
+  } catch (err) {
+    console.error("Debug error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DEBUG: Check if faculty exist
+app.get("/admin/debug-faculties", async (req, res) => {
+  try {
+    const faculties = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER }).lean();
+    res.json({
+      success: true,
+      faculties: faculties.map(f => ({
+        username: f.username,
+        name: f.name,
+        role: f.role,
+        experience: f.experience
+      })),
+      total: faculties.length
+    });
+  } catch (err) {
+    console.error("Debug faculties error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+/* ================= STUDENT FORGOT PASSWORD ================= */
+/* ================= STUDENT FORGOT PASSWORD ================= */
+app.post("/student/forgot-password", async (req, res) => {
+  try {
+    let { email } = req.body;
+
+    if (!email) {
+      return res.json({
+        success: false,
+        message: "Email is required"
+      });
+    }
+
+    email = email.trim().toLowerCase();
+
+    console.log(`Looking for student with email: ${email}`);
+
+    // Find student with all fields
+    const student = await Student.findOne({ email }).select('+password');
+
+    if (!student) {
+      console.log(`Student not found for email: ${email}`);
+      return res.json({
+        success: false,
+        message: "Email not registered"
+      });
+    }
+
+    console.log(`Student found: ${student.name}, Email: ${student.email}`);
+    console.log(`Student object keys:`, Object.keys(student.toObject()));
+    console.log(`Student data:`, {
+      name: student.name,
+      email: student.email,
+      regNo: student.regNo,
+      universityRegNo: student.universityRegNo,
+      registerNumber: student.registerNumber,
+      password: student.password,
+      hasPassword: !!student.password
+    });
+
+    // Try multiple possible field names for the registration number
+    const registrationNumber =
+      student.regNo ||
+      student.universityRegNo ||
+      student.registerNumber ||
+      student.password ||
+      student.registrationNumber ||
+      "NOT_FOUND";
+
+    if (registrationNumber === "NOT_FOUND") {
+      console.error(`Registration number not found for student: ${student.email}`);
+      console.error(`Available fields:`, student.toObject());
+
+      return res.json({
+        success: false,
+        message: "Registration information not available. Please contact administrator."
+      });
+    }
+
+    console.log(`Using registration number: ${registrationNumber} for email: ${student.email}`);
+
+    // Create transporter
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+
+    // Verify transporter
+    await transporter.verify();
+    console.log("Email transporter verified successfully");
+
+    // Send email with registration number
+    const mailResult = await transporter.sendMail({
+      from: `"Smart Timetable System" <${process.env.EMAIL_USER}>`,
+      to: student.email,
+      subject: "Your Student Portal Login Information",
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; }
+            .header { background: linear-gradient(135deg, #1e3a8a, #2563eb); color: white; padding: 20px; border-radius: 10px 10px 0 0; text-align: center; }
+            .content { padding: 30px; background: #f9fafb; }
+            .password-box { background: white; border: 2px solid #2563eb; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center; font-size: 24px; font-weight: bold; color: #1e40af; }
+            .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Smart Timetable System</h1>
+              <p>Student Portal Login Information</p>
+            </div>
+            <div class="content">
+              <p>Hello <strong>${student.name}</strong>,</p>
+              <p>You requested your login credentials for the Smart Timetable System.</p>
+              <p>Your login details are:</p>
+              
+              <div class="password-box">
+                Registration Number:<br>
+                <span style="font-size: 28px; color: #1e3a8a;">${registrationNumber}</span>
+              </div>
+              
+              <p><strong>Important:</strong></p>
+              <ul>
+                <li>Your registration number is your password</li>
+                <li>Use this number to log in to the student portal</li>
+                <li>Do not share your login credentials with anyone</li>
+              </ul>
+              
+              <p>Login URL: <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}">Student Portal Login</a></p>
+              
+              <p>If you did not request this information, please ignore this email.</p>
+            </div>
+            <div class="footer">
+              <p>This is an automated message. Please do not reply to this email.</p>
+              <p>&copy; ${new Date().getFullYear()} Smart Timetable System. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    });
+
+    console.log(`✅ Password email sent to ${student.email}`);
+    console.log(`📧 Email sent with registration number: ${registrationNumber}`);
+    console.log(`📨 Email message ID: ${mailResult.messageId}`);
+
+    return res.json({
+      success: true,
+      message: "Login information has been sent to your email address"
+    });
+
+  } catch (err) {
+    console.error("❌ STUDENT FORGOT PASSWORD ERROR:", err);
+    console.error("Error details:", {
+      message: err.message,
+      stack: err.stack,
+      code: err.code
+    });
+
+    // More specific error messages
+    let errorMessage = "Server error. Please try again later.";
+
+    if (err.code === 'EAUTH') {
+      errorMessage = "Email authentication failed. Please contact administrator.";
+    } else if (err.code === 'ENOTFOUND') {
+      errorMessage = "Email service temporarily unavailable.";
+    } else if (err.message.includes('No recipients defined')) {
+      errorMessage = "Invalid email address.";
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: errorMessage
+    });
+  }
+});
+
+/* ================= STUDENT UPLOAD ROUTES ================= */
+app.post("/admin/upload-students", upload.single("file"), async (req, res) => {
+  try {
+    console.log("--- Student Upload Request Received ---");
+    if (!req.file) {
+      console.log("❌ No file attached to request");
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded"
+      });
+    }
+
+    console.log(`📂 File details: name=${req.file.originalname}, path=${req.file.path}, size=${req.file.size}`);
+
+    const workbook = new ExcelJS.Workbook();
+    try {
+      console.log("⏳ Reading Excel file...");
+      await workbook.xlsx.readFile(req.file.path);
+      console.log("✅ Excel file read successfully");
+    } catch (readErr) {
+      console.error("❌ ExcelJS Read Error:", readErr);
+      throw new Error(`Failed to read Excel file: ${readErr.message}`);
+    }
+
+    const sheet = workbook.worksheets[0];
+    if (!sheet) {
+      console.log("❌ No worksheets found in workbook");
+      return res.status(400).json({
+        success: false,
+        message: "Excel sheet not found"
+      });
+    }
+
+    console.log(`📊 Sheet "${sheet.name}" has ${sheet.rowCount} total rows`);
+
+    const HEADER_ALIASES = {
+      "class roll no": "rollno",
+      "roll no": "rollno",
+      "rollno": "rollno",
+      "university regno": "regno",
+      "regno": "regno",
+      "registration no": "regno",
+      "mobile no": "mobile",
+      "mobile": "mobile",
+      "email": "email",
+      "name": "name"
+    };
+
+    const REQUIRED_HEADERS = ["rollno", "name", "regno", "mobile", "email"];
+
+    let headerRow;
+    let headerRowNumber = 0;
+
+    console.log("🔍 Searching for header row in top 5 lines...");
+    for (let i = 1; i <= 5; i++) {
+      const row = sheet.getRow(i);
+      const values = row.values
+        .slice(1)
+        .map(v => v?.toString().trim().toLowerCase());
+
+      console.log(`Row ${i} raw values:`, values);
+      const mapped = values.map(v => HEADER_ALIASES[v]).filter(Boolean);
+      console.log(`Row ${i} mapped headers:`, mapped);
+
+      if (mapped.includes("rollno") && mapped.includes("regno") && mapped.includes("email")) {
+        headerRow = row;
+        headerRowNumber = i;
+        console.log(`✨ Found header row at index ${i}`);
+        break;
+      }
+    }
+
+    if (!headerRow) {
+      console.log("❌ Valid header row NOT found");
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Excel structure: Ensure columns for Roll No, Name, Regno, Mobile, and Email exist."
+      });
+    }
+
+    const columnIndex = {};
+    headerRow.values.slice(1).forEach((cellValue, index) => {
+      const key = HEADER_ALIASES[cellValue?.toString().trim().toLowerCase()];
+      if (key) columnIndex[key] = index + 1;
+    });
+
+    console.log("🗺️ Column mapping:", columnIndex);
+
+    const missingHeaders = REQUIRED_HEADERS.filter(h => !columnIndex[h]);
+    if (missingHeaders.length) {
+      console.log("❌ Missing headers:", missingHeaders);
+      return res.status(400).json({
+        success: false,
+        message: "Missing required columns: " + missingHeaders.join(", "),
+        missingHeaders
+      });
+    }
+
+    /* ================= READ EXCEL DATA ================= */
+
+    const newStudentsData = [];
+    console.log("📥 Extracting data rows...");
+
+    for (let i = headerRowNumber + 1; i <= sheet.rowCount; i++) {
+      const row = sheet.getRow(i);
+      if (!row.hasValues) continue;
+
+      try {
+        const rollNo = (row.getCell(columnIndex.rollno).value || "").toString().trim();
+        const name = (row.getCell(columnIndex.name).value || "").toString().trim();
+        const regNo = (row.getCell(columnIndex.regno).value || "").toString().trim();
+        const mobile = (row.getCell(columnIndex.mobile).value || "").toString().trim();
+        const email = (row.getCell(columnIndex.email).value || "").toString().trim();
+
+        // Evaluate row data mapped for fallback 
+        let rowData = {};
+        if (headerRow && headerRow.values) {
+          row.eachCell((cell, colNumber) => {
+            const headerVal = headerRow.getCell(colNumber).value?.toString().trim();
+            if (headerVal) rowData[headerVal] = cell.value;
+          });
+        }
+
+        const universityRegNo =
+          regNo ||
+          rowData.universityRegNo ||
+          rowData.registerNo ||
+          rowData["Register Number"] ||
+          rowData["Reg No"];
+
+        const finalUniversityRegNo = (universityRegNo || "").toString().trim();
+
+        console.log("Row:", rowData);
+        console.log("Mapped RegNo:", finalUniversityRegNo);
+
+        // Skips record safely (Do not throw error, do not log nulls to DB)
+        if (!finalUniversityRegNo || !email || !email.includes("@")) {
+          console.log(`⚠️ Skipping row ${i}: Missing regNo or invalid email`);
+          continue;
+        }
+
+        newStudentsData.push({ rollNo, name, regNo: finalUniversityRegNo, universityRegNo: finalUniversityRegNo, mobile, email });
+      } catch (rowErr) {
+        console.warn(`⚠️ Error parsing row ${i}, skipping:`, rowErr.message);
+      }
+    }
+
+    console.log(`✅ Extracted ${newStudentsData.length} valid student records from file`);
+
+    if (newStudentsData.length === 0) {
+      return res.json({
+        success: false,
+        message: "No valid student records found in the uploaded file"
+      });
+    }
+
+    /* ================= SYNC WITH DATABASE ================= */
+
+    console.log("🔄 Starting database sync...");
+    const batchId = uuidv4();
+    const regNos = newStudentsData.map(s => s.regNo);
+    const emails = newStudentsData.map(s => s.email);
+
+    // Fetch all existing students that match either regNo or email
+    const existingStudents = await Student.find({
+      $or: [
+        { regNo: { $in: regNos } },
+        { email: { $in: emails } }
+      ]
+    });
+
+    const existingByRegNo = new Map();
+    const existingByEmail = new Map();
+
+    existingStudents.forEach(s => {
+      existingByRegNo.set(s.regNo, s);
+      existingByEmail.set(s.email, s);
+    });
+
+    console.log(`🔍 Checked DB: Found ${existingStudents.length} potentially conflicting records`);
+
+    let added = 0;
+    let updated = 0;
+    let unchanged = 0;
+    let errors = 0;
+
+    for (const student of newStudentsData) {
+      try {
+        // Check by RegNo primarily
+        let existing = existingByRegNo.get(student.regNo);
+
+        // If not found by regNo, check by email
+        if (!existing) {
+          existing = existingByEmail.get(student.email);
+        }
+
+        if (!existing) {
+          // Double check email uniqueness just before creation to avoid race conditions or file duplicates
+          const emailConflict = await Student.findOne({ email: student.email });
+          if (emailConflict) {
+            console.log(`🚫 Email conflict for ${student.email}, skipping`);
+            errors++;
+            continue;
+          }
+
+          await Student.create({
+            ...student,
+            universityRegNo: student.universityRegNo,
+            semester: req.body.semester ? Number(req.body.semester) : undefined,
+            semesterType: req.body.semesterType || undefined,
+            uploadedFromExcel: true,
+            uploadBatchId: batchId
+          });
+          added++;
+          console.log(`+ Added: ${student.regNo}`);
+        } else {
+          const isSame =
+            existing.rollNo === student.rollNo &&
+            existing.name === student.name &&
+            existing.mobile === student.mobile &&
+            existing.email === student.email &&
+            existing.regNo === student.regNo;
+
+          if (isSame) {
+            unchanged++;
+          } else {
+            existing.rollNo = student.rollNo;
+            existing.name = student.name;
+            existing.mobile = student.mobile;
+            existing.email = student.email;
+            existing.regNo = student.regNo;
+            existing.universityRegNo = student.universityRegNo;
+            existing.semester = req.body.semester ? Number(req.body.semester) : existing.semester;
+            existing.semesterType = req.body.semesterType || existing.semesterType;
+            existing.uploadedFromExcel = true;
+            existing.uploadBatchId = batchId;
+            await existing.save();
+            updated++;
+            console.log(`~ Updated: ${student.regNo}`);
+          }
+        }
+      } catch (saveErr) {
+        console.error(`❌ Error saving student ${student.regNo}:`, saveErr.message);
+        errors++;
+      }
+    }
+
+    console.log(`🏁 Sync Complete. Summary: Added=${added}, Updated=${updated}, Unchanged=${unchanged}, Errors=${errors}`);
+
+    /* ================= PERSISTENCE RECORD ================= */
+    console.log("💾 Saving upload status to persistence...");
+    const keyStr = req.body.semester ? `student_file_info_sem_${req.body.semester}` : "student_file_info";
+    await Settings.findOneAndUpdate(
+      { key: keyStr },
+      {
+        value: {
+          batchId,
+          fileName: req.file.originalname,
+          uploadDate: new Date(),
+          recordCount: newStudentsData.length,
+          semester: req.body.semester ? Number(req.body.semester) : null,
+          semesterType: req.body.semesterType || null
+        }
+      },
+      { upsert: true }
+    );
+
+    /* ================= CLEANUP ================= */
+    if (req.file && fs.existsSync(req.file.path)) {
+      // For persistence, we might want to keep a copy with the batchId
+      const persistentFileName = `students_${batchId}.xlsx`;
+      const persistentPath = path.join(uploadDir, persistentFileName);
+      fs.copyFileSync(req.file.path, persistentPath);
+
+      fs.unlinkSync(req.file.path);
+      console.log("🧹 Temporary file deleted, persistent copy saved");
+    }
+
+    return res.json({
+      success: true,
+      message: `Upload complete. Added: ${added}, Updated: ${updated}, Unchanged: ${unchanged}${errors > 0 ? `, Failures: ${errors}` : ''}`,
+      results: { added, updated, unchanged, errors }
+    });
+
+  } catch (err) {
+    console.error("🔥 CRITICAL UPLOAD ERROR:", err);
+
+    // Cleanup on crash
+    if (req.file && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Server error during student upload",
+      error: err.message
+    });
+  }
+});
+
+
+/* ================= REMOVE FILE ================= */
+app.post("/admin/remove-student-file", async (req, res) => {
+  try {
+    const { key } = req.body;
+    const searchKey = key || "student_file_info";
+    const statusEntry = await Settings.findOne({ key: searchKey });
+    if (!statusEntry) {
+      return res.json({ success: false, message: "No uploaded student file found in database" });
+    }
+
+    const { batchId } = statusEntry.value;
+
+    // Delete only students from this batch
+    const deleteResult = await Student.deleteMany({ uploadedFromExcel: true, uploadBatchId: batchId });
+    console.log(`🗑️ Deleted ${deleteResult.deletedCount} students from batch ${batchId}`);
+
+    // Remove Excel file from disk
+    const filePath = path.join(uploadDir, `students_${batchId}.xlsx`);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`🗑️ Deleted Excel file: ${filePath}`);
+    }
+
+    // Clear persistence record
+    await Settings.deleteOne({ key: searchKey });
+
+    res.json({ success: true, message: "File removed and student data cleared successfully." });
+
+  } catch (err) {
+    console.error("Error removing student file:", err);
+    res.status(500).json({ success: false, message: "Error removing uploaded students" });
+  }
+});
+
+/* ================= CHECK FILE ================= */
+app.get("/admin/check-student-file", async (req, res) => {
+  try {
+    const statusEntries = await Settings.find({ key: { $regex: /^student_file_info/ } });
+    const files = statusEntries.map(entry => ({
+      key: entry.key,
+      batchId: entry.value.batchId,
+      fileName: entry.value.fileName || "Student File",
+      uploadDate: entry.value.uploadDate,
+      semester: entry.value.semester,
+      semesterType: entry.value.semesterType
+    }));
+
+    if (files.length > 0) {
+      return res.json({
+        exists: true,
+        files
+      });
+    }
+    res.json({ exists: false, files: [] });
+  } catch (err) {
+    console.error("Error checking student file status:", err);
+    res.json({ exists: false, files: [] });
+  }
+});
+
+/* ================= FACULTY FORGOT PASSWORD ================= */
+
+// Check if faculty username exists
+app.post("/faculty/check-username", async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username) {
+      return res.json({ exists: false });
+    }
+
+    const faculty = await Faculty.findOne({ username });
+
+    if (!faculty) {
+      return res.json({ exists: false });
+    }
+
+    res.json({ exists: true });
+
+  } catch (err) {
+    console.error("Check username error:", err);
+    res.status(500).json({ exists: false });
+  }
+});
+
+/* ================= FACULTY FORGOT PASSWORD ================= */
+app.post("/faculty/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    // Find faculty by email
+    const faculty = await Faculty.findOne({ email: email.trim().toLowerCase() });
+    if (!faculty) {
+      console.log("Forgot password: Email not found ->", email);
+      return res.status(404).json({ success: false, message: "Email not registered" });
+    }
+
+    // Generate reset token
+    const token = crypto.randomBytes(32).toString("hex");
+    faculty.resetToken = token;
+    faculty.resetTokenExpiry = Date.now() + 15 * 60 * 1000; // 15 minutes
+    await faculty.save();
+    console.log("Reset token saved for:", email, "Token:", token);
+
+    // Create transporter using Gmail service and app password
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,      // your Gmail address
+        pass: process.env.EMAIL_PASSWORD   // your 16-char app password
+      },
+      logger: true,
+      debug: true
+    });
+
+    const resetLink = `${process.env.FRONTEND_URL}/resetpassword.html?token=${token}`;
+    console.log("Reset link:", resetLink);
+
+    // Send the reset email
+    await transporter.sendMail({
+      from: `"Smart Timetable" <${process.env.EMAIL_USER}>`,
+      to: faculty.email,
+      subject: "Faculty Password Reset",
+      html: `<p>Click the link below to reset your password:</p>
+             <a href="${resetLink}">${resetLink}</a>
+             <p>This link expires in 15 minutes.</p>`
+    });
+
+    console.log("Reset email sent to:", faculty.email);
+    res.json({ success: true, message: "Reset link sent successfully" });
+
+  } catch (err) {
+    console.error("FORGOT PASSWORD ERROR:", err);
+    res.status(500).json({ success: false, message: "Server error: " + err.message });
+  }
+});
+
+
+// Reset faculty password
+app.post("/faculty/reset-password", async (req, res) => {
+  const { token, password } = req.body;
+
+  const faculty = await Faculty.findOne({
+    resetToken: token,
+    resetTokenExpiry: { $gt: Date.now() }
+  });
+
+  if (!faculty)
+    return res.json({ success: false, message: "Invalid or expired link" });
+
+  faculty.password = await bcrypt.hash(password, 10);
+  faculty.resetToken = undefined;
+  faculty.resetTokenExpiry = undefined;
+  await faculty.save();
+
+  res.json({ success: true });
+});
+/* ================= ADMIN FORGOT PASSWORD ================= */
+
+// Check if admin username exists
+app.post("/admin/check-username", async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username) {
+      return res.json({ exists: false });
+    }
+
+    const admin = await Admin.findOne({ username });
+
+    if (!admin) {
+      return res.json({ exists: false });
+    }
+
+    res.json({ exists: true });
+
+  } catch (err) {
+    console.error("Admin check username error:", err);
+    res.status(500).json({ exists: false });
+  }
+});
+
+// Reset admin password
+app.post("/admin/reset-password", async (req, res) => {
+  try {
+    const { username, newPassword } = req.body;
+
+    if (!username || !newPassword) {
+      return res.json({
+        success: false,
+        message: "Missing fields"
+      });
+    }
+
+    const admin = await Admin.findOne({ username });
+
+    if (!admin) {
+      return res.json({
+        success: false,
+        message: "Admin not found"
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    admin.password = hashedPassword;
+    await admin.save();
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Admin reset password error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+/* ================= STUDENT FORGOT PASSWORD ================= */
+
+/* ================= STUDENT FORGOT PASSWORD ================= */
+
+// STEP 1: Check student email
+app.post("/student/check-email", async (req, res) => {
+  try {
+    let { email } = req.body;
+
+    if (!email) return res.json({ exists: false });
+
+    email = email.trim().toLowerCase();
+
+    const student = await Student.findOne({ email });
+
+    if (!student) return res.json({ exists: false });
+
+    res.json({ exists: true });
+
+  } catch (err) {
+    console.error("Student check error:", err);
+    res.status(500).json({ exists: false });
+  }
+});
+
+// STEP 2: Reset password
+app.post("/student/reset-password", async (req, res) => {
+  try {
+    let { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.json({
+        success: false,
+        message: "Missing fields"
+      });
+    }
+
+    email = email.trim().toLowerCase();
+
+    const student = await Student.findOne({ email });
+    if (!student) {
+      return res.json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    student.password = await bcrypt.hash(newPassword, 10);
+    await student.save();
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Student reset error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+
+// Reset student password
+app.post("/student/reset-password", async (req, res) => {
+  try {
+    let { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.json({
+        success: false,
+        message: "Missing fields"
+      });
+    }
+
+    email = email.trim().toLowerCase();
+
+    const student = await Student.findOne({ email });
+
+    if (!student) {
+      return res.json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    student.password = hashedPassword;
+    await student.save();
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Student reset error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+// ================= ADMIN – VIEW FACULTY PREFERENCES =================
+app.get("/admin/faculty-preferences", async (req, res) => {
+  try {
+    const faculty = await Faculty.find(
+      {},
+      {
+        username: 1,
+        name: 1,
+        department: 1,
+        preferences: 1,
+        timePreferences: 1,
+        canTakeBackToBack: 1
+      }
+    );
+
+    // Wrap in an object so frontend finds `data.faculty`
+    res.json({ faculty });
+  } catch (err) {
+    console.error("Fetch faculty preferences error:", err);
+    res.status(500).json({ faculty: [] });
+  }
+});
+
+
+// Fetch saved timetable rules
+app.get("/admin/get-timeline", async (req, res) => {
+  try {
+    const timeline = await Timeline.findOne();
+    let rules = {};
+
+    if (timeline && timeline.rules) {
+      if (timeline.rules instanceof Map) {
+        // Convert Map to object
+        for (const [key, value] of timeline.rules) {
+          rules[key] = value;
+        }
+      } else {
+        rules = timeline.rules;
+      }
+    }
+
+    res.json({
+      success: true,
+      rules: rules
+    });
+  } catch (err) {
+    console.error("Get timeline error:", err);
+    res.status(500).json({
+      success: false,
+      rules: {}
+    });
+  }
+});
+
+app.post("/admin/save-timeline", async (req, res) => {
+  try {
+    const { rules } = req.body;
+
+    if (!rules || Object.keys(rules).length === 0) {
+      return res.json({ success: false, message: "No rules received" });
+    }
+
+    let timeline = await Timeline.findOne();
+
+    if (!timeline) {
+      timeline = new Timeline();
+    }
+
+    // Clear old rules
+    timeline.rules = new Map();
+
+    // Set new rules properly (IMPORTANT for Map)
+    Object.keys(rules).forEach(day => {
+      timeline.rules.set(day, rules[day]);
+    });
+
+    await timeline.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Save timeline error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+
+// POST /admin/approve-faculty-preference
+app.post("/admin/approve-faculty-preference", async (req, res) => {
+  const { facultyId, action, reason } = req.body;
+
+  if (!facultyId || !action)
+    return res.json({ success: false, message: "Missing data" });
+
+  try {
+    const faculty = await Faculty.findById(facultyId);
+    if (!faculty) return res.json({ success: false, message: "Faculty not found" });
+
+    if (action === "accept") {
+      faculty.preferenceStatus = "accepted";
+      faculty.preferenceRejectionReason = "";
+
+      // ✅ Add a message for the faculty
+      if (!faculty.messages) faculty.messages = [];
+      faculty.messages.push({
+        text: "Your time preferences have been accepted by admin.",
+        date: new Date()
+      });
+
+    } else if (action === "reject") {
+      faculty.preferenceStatus = "rejected";
+      faculty.preferenceRejectionReason = reason || "No reason provided";
+
+      // Optional: send a message too
+      if (!faculty.messages) faculty.messages = [];
+      faculty.messages.push({
+        text: `Your time preferences were rejected. Reason: ${reason}`,
+        date: new Date()
+      });
+
+    } else {
+      return res.json({ success: false, message: "Invalid action" });
+    }
+
+    await faculty.save();
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.json({ success: false, message: "Server error" });
+  }
+});
+
+// GET /faculty/messages
+/* ================= FACULTY MESSAGES ================= */
+app.get("/faculty/messages", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.json({
+        success: false,
+        message: "Username required"
+      });
+    }
+
+    // Find faculty by username
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${username}$`, $options: "i" }
+    });
+
+    if (!faculty) {
+      return res.json({
+        success: false,
+        message: "Faculty not found"
+      });
+    }
+
+    // Return messages (if any)
+    const messages = faculty.messages || [];
+
+    res.json({
+      success: true,
+      messages: messages.sort((a, b) => new Date(b.date) - new Date(a.date)) // Newest first
+    });
+
+  } catch (err) {
+    console.error("Get messages error:", err);
+    res.status(500).json({
+      success: false,
+      messages: []
+    });
+  }
+});
+
+// Mark message as read
+app.post("/faculty/mark-message-read/:messageId", async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { username } = req.body;
+
+    if (!username) {
+      return res.json({
+        success: false,
+        message: "Username required"
+      });
+    }
+
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${username}$`, $options: "i" }
+    });
+
+    if (!faculty) {
+      return res.json({
+        success: false,
+        message: "Faculty not found"
+      });
+    }
+
+    // Find and mark message as read
+    if (faculty.messages && Array.isArray(faculty.messages)) {
+      const message = faculty.messages.find(m => m._id && m._id.toString() === messageId);
+      if (message) {
+        message.read = true;
+        await faculty.save();
+      }
+    }
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Mark message read error:", err);
+    res.status(500).json({
+      success: false
+    });
+  }
+});
+
+/* ================= UNREAD MESSAGE BADGE (Message collection) ================= */
+
+// GET /api/messages/unread-count/:facultyId
+app.get("/api/messages/unread-count/:facultyId", async (req, res) => {
+  try {
+    const { facultyId } = req.params;
+    if (!facultyId) return res.status(400).json({ unreadCount: 0 });
+
+    const unreadCount = await Message.countDocuments({ recipientId: facultyId, isRead: false });
+    return res.json({ unreadCount });
+  } catch (err) {
+    console.error("Unread count error:", err);
+    return res.status(500).json({ unreadCount: 0 });
+  }
+});
+
+// PUT /api/messages/mark-read/:facultyId
+app.put("/api/messages/mark-read/:facultyId", async (req, res) => {
+  try {
+    const { facultyId } = req.params;
+    if (!facultyId) return res.status(400).json({ success: false });
+
+    const result = await Message.updateMany(
+      { recipientId: facultyId, isRead: false },
+      { $set: { isRead: true } }
+    );
+
+    return res.json({ success: true, modifiedCount: result?.modifiedCount || 0 });
+  } catch (err) {
+    console.error("Mark read error:", err);
+    return res.status(500).json({ success: false });
+  }
+});
+
+// Send message to faculty (Update the existing function)
+app.post("/admin/send-message-to-faculty", async (req, res) => {
+  try {
+    const { facultyId, message, type, date } = req.body;
+
+    if (!facultyId || !message) {
+      return res.json({
+        success: false,
+        message: "Missing data"
+      });
+    }
+
+    const faculty = await Faculty.findById(facultyId);
+    if (!faculty) {
+      return res.json({
+        success: false,
+        message: "Faculty not found"
+      });
+    }
+
+    // Initialize messages array if it doesn't exist
+    if (!faculty.messages) {
+      faculty.messages = [];
+    }
+
+    // Add message
+    faculty.messages.push({
+      text: message,
+      type: type || "info",
+      date: date || new Date(),
+      read: false
+    });
+
+    await faculty.save();
+
+    res.json({
+      success: true,
+      message: "Message sent to faculty"
+    });
+
+  } catch (err) {
+    console.error("Send message error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+// Mark preferences as submitted (optional)
+app.post("/faculty/mark-prefs-submitted", async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username) {
+      return res.json({
+        success: false,
+        message: "Username required"
+      });
+    }
+
+    await Faculty.findOneAndUpdate(
+      { username: { $regex: `^${username}$`, $options: "i" } },
+      {
+        preferenceStatus: "submitted",
+        preferenceSubmittedAt: new Date()
+      }
+    );
+
+    res.json({
+      success: true
+    });
+
+  } catch (err) {
+    console.error("Mark preferences submitted error:", err);
+    res.status(500).json({
+      success: false
+    });
+  }
+});
+
+// Update the approve/reject preference routes to send messages:
+app.post("/admin/approve-faculty-preference", async (req, res) => {
+  const { facultyId, action, reason } = req.body;
+
+  if (!facultyId || !action)
+    return res.json({
+      success: false,
+      message: "Missing data"
+    });
+
+  try {
+    const faculty = await Faculty.findById(facultyId);
+    if (!faculty) return res.json({
+      success: false,
+      message: "Faculty not found"
+    });
+
+    if (action === "accept") {
+      faculty.preferenceStatus = "accepted";
+      faculty.preferenceRejectionReason = "";
+
+      // ✅ Add a message for the faculty
+      if (!faculty.messages) faculty.messages = [];
+      faculty.messages.push({
+        text: "✅ Your time preferences have been accepted by admin.",
+        type: "approval",
+        date: new Date(),
+        read: false
+      });
+
+      await faculty.save();
+
+      // Send email notification
+      if (faculty.email) {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASSWORD
+          }
+        });
+
+        await transporter.sendMail({
+          from: `"Smart Timetable" <${process.env.EMAIL_USER}>`,
+          to: faculty.email,
+          subject: "Time Preferences Accepted",
+          html: `<p>Hello ${faculty.name},</p>
+                 <p>Your time preferences have been <b>accepted</b> by the admin.</p>
+                 <p>You can view your approved preferences in your dashboard.</p>
+                 <p>Thank you for your submission!</p>`
+        });
+      }
+
+    } else if (action === "reject") {
+      faculty.preferenceStatus = "rejected";
+      faculty.preferenceRejectionReason = reason || "No reason provided";
+
+      // Add message for faculty
+      if (!faculty.messages) faculty.messages = [];
+      faculty.messages.push({
+        text: `❌ Your time preferences have been rejected. Reason: ${reason}`,
+        type: "rejection",
+        date: new Date(),
+        read: false
+      });
+
+      await faculty.save();
+
+      // Send email notification for rejection
+      if (faculty.email) {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASSWORD
+          }
+        });
+
+        await transporter.sendMail({
+          from: `"Smart Timetable" <${process.env.EMAIL_USER}>`,
+          to: faculty.email,
+          subject: "Time Preferences Rejected",
+          html: `<p>Hello ${faculty.name},</p>
+                 <p>Your time preferences have been <b>rejected</b> by the admin.</p>
+                 <p><b>Reason:</b> ${reason}</p>
+                 <p>Please review and resubmit your preferences.</p>`
+        });
+      }
+
+    } else {
+      return res.json({
+        success: false,
+        message: "Invalid action"
+      });
+    }
+
+    await faculty.save();
+    return res.json({
+      success: true,
+      message: `Preferences ${action}ed successfully`
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+// Reset faculty preference status
+app.post("/admin/reset-faculty-preference", async (req, res) => {
+  try {
+    const { facultyId } = req.body;
+
+    if (!facultyId) {
+      return res.json({
+        success: false,
+        message: "Faculty ID required"
+      });
+    }
+
+    const faculty = await Faculty.findByIdAndUpdate(
+      facultyId,
+      {
+        preferenceStatus: "pending",
+        preferenceRejectionReason: "",
+        $push: {
+          messages: {
+            text: "ℹ️ Your preference status has been reset to pending by admin.",
+            type: "info",
+            date: new Date(),
+            read: false
+          }
+        }
+      },
+      { new: true }
+    );
+
+    if (!faculty) {
+      return res.json({
+        success: false,
+        message: "Faculty not found"
+      });
+    }
+
+    res.json({
+      success: true
+    });
+
+  } catch (err) {
+    console.error("Reset preference error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+
+/* ================= GET DEADLINE ================= */
+app.get("/api/preference-deadline", async (req, res) => {
+  try {
+    const deadlineSetting = await Settings.findOne({ key: "preferenceDeadline" });
+
+    const deadline = deadlineSetting ? Number(deadlineSetting.value) : null;
+    const locked = deadline ? Date.now() > deadline : false;
+
+
+    // ✅ Always sync lock state
+    await Settings.findOneAndUpdate(
+      { key: "preferenceLocked" },
+      { value: locked },
+      { upsert: true }
+    );
+
+    res.json({ deadline, locked });
+
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ deadline: null, locked: false });
+  }
+});
+
+
+/* ================= SET PREFERENCE DEADLINE ================= */
+app.post("/admin/set-preference-deadline", async (req, res) => {
+  try {
+    const { deadline } = req.body;
+
+    if (!deadline) {
+      return res.status(400).json({
+        success: false,
+        message: "Deadline required"
+      });
+    }
+
+    // ✅ CONVERT TO TIMESTAMP (THIS WAS MISSING)
+    const deadlineTimestamp = Number(new Date(deadline));
+
+    if (isNaN(deadlineTimestamp)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid deadline format"
+      });
+    }
+
+    // ✅ SAVE DEADLINE
+    await Settings.findOneAndUpdate(
+      { key: "preferenceDeadline" },
+      { value: deadlineTimestamp },
+      { upsert: true }
+    );
+
+    // 🔒 LOCK ONLY IF PASSED
+    const locked = Date.now() > deadlineTimestamp;
+
+    await Settings.findOneAndUpdate(
+      { key: "preferenceLocked" },
+      { value: locked },
+      { upsert: true }
+    );
+
+    // 🔄 RESET REMINDER FLAG
+    await Settings.findOneAndUpdate(
+      { key: "preferenceReminderSent" },
+      { value: false },
+      { upsert: true }
+    );
+
+    res.json({
+      success: true,
+      message: "Deadline saved successfully"
+    });
+
+  } catch (err) {
+    console.error("Set deadline error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+/* ================= ADMIN – WORKLOAD MANAGEMENT ================= */
+
+// SAVE COMPLETE WORKLOAD CONFIG (hours + subject count + min theory + min lab)
+app.post("/admin/save-workload-config", async (req, res) => {
+  try {
+    const { config } = req.body;
+
+    for (const designation in config) {
+      await WorkloadConfig.findOneAndUpdate(
+        { designation },
+        {
+          designation,
+          weeklyHours: config[designation].weeklyHours,
+          minTheory: config[designation].minTheory,
+          minLab: config[designation].minLab
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    res.json({ success: true, message: "Workload configuration saved" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// GET THE GLOBAL FACULTY ALLOCATION COUNTS
+app.get("/admin/global-faculty-counts", async (req, res) => {
+  try {
+    const counts = { theoryFacultyCount: 1, labFacultyCount: 2, projectFacultyCount: 3 };
+    const keys = ["theoryFacultyCount", "labFacultyCount", "projectFacultyCount"];
+
+    for (const key of keys) {
+      const setting = await Settings.findOne({ key });
+      if (setting) counts[key] = Number(setting.value);
+    }
+
+    res.json({ success: true, counts });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// SAVE THE GLOBAL FACULTY ALLOCATION COUNTS
+app.post("/admin/save-global-faculty-counts", async (req, res) => {
+  try {
+    const { theoryFacultyCount, labFacultyCount, projectFacultyCount } = req.body;
+
+    const updates = [
+      { key: "theoryFacultyCount", value: theoryFacultyCount || 1 },
+      { key: "labFacultyCount", value: labFacultyCount || 2 },
+      { key: "projectFacultyCount", value: projectFacultyCount || 3 }
+    ];
+
+    for (const item of updates) {
+      await Settings.findOneAndUpdate(
+        { key: item.key },
+        { value: item.value },
+        { upsert: true }
+      );
+    }
+
+    res.json({ success: true, message: "Faculty counts saved successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+
+
+// Update weekly hours for subjects
+app.post("/admin/update-weekly-hours", async (req, res) => {
+  try {
+    const { updates } = req.body; // [{code, weeklyHours}, ...]
+
+    if (!Array.isArray(updates)) return res.status(400).json({ success: false });
+
+    for (const u of updates) {
+      await Subject.findOneAndUpdate(
+        { code: u.code },
+        { $set: { weeklyHours: u.weeklyHours } }
+      );
+    }
+
+    res.json({ success: true, message: "Weekly hours updated successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+
+
+});
+
+// GET COMPLETE WORKLOAD CONFIG
+/* ================= GET WORKLOAD CONFIG FOR FACULTY ================= */
+app.get("/faculty/workload-config", async (req, res) => {
+  try {
+    const configs = await WorkloadConfig.find();
+
+    const result = {};
+    configs.forEach(c => {
+      result[c.designation] = {
+        weeklyHours: c.weeklyHours,
+        minTheory: c.minTheory,
+        minLab: c.minLab
+      };
+    });
+
+    res.json({
+      success: true,
+      config: result
+    });
+  } catch (err) {
+    console.error("Get workload config error:", err);
+    res.status(500).json({
+      success: false,
+      config: {}
+    });
+  }
+});
+
+// ✅ ADD THIS NEW ROUTE FOR ALLOCATIONS VIEW
+// Get allocations by username (for faculty dashboard)
+app.get("/faculty/allocations", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: "Username required"
+      });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+    console.log(`📊 Fetching allocations for username: ${cleanUsername}`);
+
+    // Find faculty by username
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${cleanUsername}$`, $options: "i" }
+    });
+
+    if (!faculty) {
+      console.log(`❌ Faculty not found for username: ${cleanUsername}`);
+      return res.json({
+        success: false,
+        message: "Faculty not found",
+        allocations: []
+      });
+    }
+
+    console.log(`✅ Found faculty: ${faculty.name} (ID: ${faculty._id})`);
+
+    // Find allocations for this faculty
+    const allocations = await FacultyAllocation.find({
+      $or: [
+        { facultyUsername: { $regex: `^${cleanUsername}$`, $options: "i" } },
+        { facultyId: faculty._id.toString() },
+        { facultyName: faculty.name }
+      ]
+    }).lean();
+
+    console.log(`✅ Found ${allocations.length} allocations for ${faculty.name}`);
+
+    // Format the allocations for the frontend
+    const formattedAllocations = allocations.map(allocation => ({
+      subjectCode: allocation.subjectCode,
+      subjectName: allocation.subjectName || allocation.subjectCode,
+      subjectType: (allocation.subjectType || "THEORY").toUpperCase(),
+      weeklyHours: allocation.weeklyHours || 0,
+      semester: allocation.semester || 1,
+      allocationDate: allocation.allocatedAt || allocation.createdAt || new Date(),
+      credit: allocation.credit || 0
+    }));
+
+    res.json({
+      success: true,
+      allocations: formattedAllocations
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching faculty allocations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching allocation details',
+      allocations: []
+    });
+  }
+});
+
+
+// ================= STRICT SENIORITY-BASED ALLOCATION =================
+/* ================= STRICT SENIORITY-BASED ALLOCATION ================= */
+app.post("/admin/strict-allocate", async (req, res) => {
+  try {
+    let { viewOnly, targetSemester, academicYear: reqAcademicYear, term: reqTerm, department: reqDept } = req.body;
+
+    // Centralized designation priority for consistent seniority ranking
+    const designationPriority = {
+      "professor": 1,
+      "associate professor": 2,
+      "assistant professor": 3
+    };
+
+    reqAcademicYear = reqAcademicYear ? reqAcademicYear.replace(/\s+/g, '') : undefined;
+    reqTerm = reqTerm ? reqTerm.trim() : undefined;
+
+    // Get active semester setting
+    const activeSemesterObj = await Settings.findOne({ key: "semesterType" });
+
+    // Determine which semesters to consider for allocation
+    let allocationSemesterType = activeSemesterObj ? activeSemesterObj.value : "ALL";
+
+    // IMPORTANT: If we are RUNNING allocation (not viewOnly), 
+    // we MUST allocate for the ENTIRE TERM (Odd or Even), regardless of UI filters.
+    if (!viewOnly) {
+      if (reqTerm === "Odd") allocationSemesterType = "ODD";
+      else if (reqTerm === "Even") allocationSemesterType = "EVEN";
+      else allocationSemesterType = "ALL";
+      console.log(`🚀 [RUN ALLOCATION] Forcing scope to TERM: ${allocationSemesterType}`);
+    } else {
+      // If we are just VIEWING, we can use the specific targetSemester to filter results
+      if (targetSemester && targetSemester !== "ALL") {
+        allocationSemesterType = targetSemester;
+      } else if (reqTerm === "Odd") {
+        allocationSemesterType = "ODD";
+      } else if (reqTerm === "Even") {
+        allocationSemesterType = "EVEN";
+      }
+      console.log(`👁️ [VIEW ONLY] Scope set to: ${allocationSemesterType}`);
+    }
+
+    console.log(`🎯 Allocation semester type: ${allocationSemesterType}`);
+
+    // Get ALL subjects first to understand their structure
+    const allSubjects = await Subject.find({}).lean();
+
+    // Debug: Log all semester values
+    const semesterValues = [...new Set(allSubjects.map(s => s.semester))];
+    console.log("📊 All semester values in DB:", semesterValues);
+    console.log("📊 Semester value types:", semesterValues.map(v => ({ value: v, type: typeof v })));
+
+    // Build query for subjects to be used in allocation
+    let allocationSubjectQuery = {};
+
+    // Add department filter if provided
+    if (reqDept && reqDept !== "ALL") {
+      allocationSubjectQuery.department = reqDept.toUpperCase();
+    }
+
+    if (allocationSemesterType === "ODD") {
+      // Handle both string and number semester values
+      const oddSemesters = [1, 3, 5, 7];
+      const oddSemestersStr = oddSemesters.map(String);
+
+      allocationSubjectQuery = {
+        $or: [
+          { semester: { $in: oddSemesters } },           // Numbers
+          { semester: { $in: oddSemestersStr } }         // Strings
+        ]
+      };
+      console.log(`🔍 ODD semester query:`, allocationSubjectQuery);
+    }
+    else if (allocationSemesterType === "EVEN") {
+      // Handle both string and number semester values
+      const evenSemesters = [2, 4, 6, 8];
+      const evenSemestersStr = evenSemesters.map(String);
+
+      allocationSubjectQuery = {
+        $or: [
+          { semester: { $in: evenSemesters } },          // Numbers
+          { semester: { $in: evenSemestersStr } }        // Strings
+        ]
+      };
+      console.log(`🔍 EVEN semester query:`, allocationSubjectQuery);
+    }
+    else if (!isNaN(parseInt(allocationSemesterType))) {
+      // Specific semester number
+      const semNum = parseInt(allocationSemesterType);
+      allocationSubjectQuery = {
+        $or: [
+          { semester: semNum },
+          { semester: String(semNum) }
+        ]
+      };
+    }
+
+    console.log(`📚 Allocation subject query:`, JSON.stringify(allocationSubjectQuery, null, 2));
+
+    // Get subjects for allocation (only from selected semester type)
+    const allocationSubjects = await Subject.find(allocationSubjectQuery).lean();
+
+    if (allocationSubjects.length === 0 && !viewOnly) {
+      return res.json({
+        success: false,
+        message: `No subjects found for semester type: ${allocationSemesterType}`
+      });
+    }
+
+    console.log(`📚 Allocation subjects: ${allocationSubjects.length} (from selected semester)`);
+    console.log(`📚 Total subjects in DB: ${allSubjects.length}`);
+
+    // Log the semesters of allocated subjects
+    const allocatedSemesters = [...new Set(allocationSubjects.map(s => s.semester))];
+    console.log(`📊 Semesters in allocated subjects:`, allocatedSemesters);
+
+    // Create a set of valid subject codes for allocation
+    const validSubjectCodesForAllocation = new Set(allocationSubjects.map(s => s.code));
+
+    // Get global faculty counts
+    const globalCounts = { theory: 1, lab: 2, project: 3 };
+    const theoryCountSetting = await Settings.findOne({ key: "theoryFacultyCount" });
+    const labCountSetting = await Settings.findOne({ key: "labFacultyCount" });
+    const projectCountSetting = await Settings.findOne({ key: "projectFacultyCount" });
+
+    if (theoryCountSetting) globalCounts.theory = Number(theoryCountSetting.value) || 1;
+    if (labCountSetting) globalCounts.lab = Number(labCountSetting.value) || 2;
+    if (projectCountSetting) globalCounts.project = Number(projectCountSetting.value) || 3;
+
+    // Get workload configuration
+    const workloads = await WorkloadConfig.find({}).lean();
+
+    // Create workload map
+    const workloadMap = {};
+    workloads.forEach(w => {
+      const key = w.designation.trim().toLowerCase();
+      workloadMap[key] = {
+        maxHours: Number(w.weeklyHours) || 16,
+        minTheory: Number(w.minTheory) || 2,
+        minLab: Number(w.minLab) || 1,
+        designation: w.designation
+      };
+    });
+
+    if (viewOnly) {
+      // Fetch current allocations with period filtering
+      let fetchQuery = {};
+      if (reqAcademicYear) fetchQuery.academicYear = reqAcademicYear;
+      if (reqTerm) fetchQuery.term = reqTerm;
+
+      let existingAllocations = await FacultyAllocation.find(fetchQuery).lean();
+      const allApprovedFaculties = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER }).lean();
+
+      // Track allocated subjects
+      const subjectAllocationMap = {};
+      allSubjects.forEach(s => {
+        let m = globalCounts.theory;
+        const sType = s.type?.toLowerCase() || "theory";
+        if (sType === "lab") m = globalCounts.lab;
+        if (sType === "project") m = globalCounts.project;
+
+        subjectAllocationMap[s.code] = {
+          count: 0,
+          max: m,
+          allocated: false,
+          semester: s.semester,
+          type: s.type
+        };
+      });
+
+      // Count allocations
+      existingAllocations.forEach(alloc => {
+        if (subjectAllocationMap[alloc.subjectCode]) {
+          subjectAllocationMap[alloc.subjectCode].count++;
+          subjectAllocationMap[alloc.subjectCode].allocated = true;
+        }
+      });
+
+      // Sort faculties by seniority to get accurate rank
+      const sortedFacultiesForRank = [...allApprovedFaculties].sort((a, b) => {
+        const priorityA = designationPriority[a.role?.toLowerCase()] || 99;
+        const priorityB = designationPriority[b.role?.toLowerCase()] || 99;
+        if (priorityA !== priorityB) return priorityA - priorityB;
+        return (b.experience || 0) - (a.experience || 0);
+      });
+
+      const facultyRankMap = {};
+      sortedFacultiesForRank.forEach((f, idx) => {
+        facultyRankMap[f.username.trim().toLowerCase()] = idx + 1;
+      });
+
+      // Prepare faculty map
+      const facultyMap = {};
+      allApprovedFaculties.forEach(f => {
+        const username = f.username.trim().toLowerCase();
+        const key = f.role?.trim().toLowerCase() || "assistant professor";
+        const max = workloadMap[key]?.maxHours || 16;
+        facultyMap[username] = {
+          faculty: f.name,
+          designation: f.role,
+          experience: f.experience,
+          seniorityRank: facultyRankMap[username] || 99,
+          maxHours: max,
+          usedHours: 0,
+          allocations: []
+        };
+      });
+
+      // Group allocations by faculty
+      existingAllocations.forEach(alloc => {
+        const username = alloc.facultyUsername?.trim().toLowerCase();
+        if (username && facultyMap[username]) {
+          // Track TOTAL term hours for accurate status (even if not displayed)
+          // Note: we only count active ones from the same academic year and term
+          if (alloc.academicYear === reqAcademicYear && alloc.term === reqTerm) {
+            facultyMap[username].totalTermHours = (facultyMap[username].totalTermHours || 0) + (alloc.weeklyHours || 0);
+          }
+
+          // Only add to displayed allocations if it matches the current semester filter
+          if (validSubjectCodesForAllocation.has(alloc.subjectCode)) {
+            facultyMap[username].allocations.push(alloc);
+            facultyMap[username].usedHours += (alloc.weeklyHours || 0);
+          }
+        }
+      });
+
+      // Prepare faculty results
+      const finalResults = [];
+      Object.keys(facultyMap).forEach(key => {
+        const f = facultyMap[key];
+        if (f.allocations.length === 0) return;
+
+        // Use totalTermHours for status calculation to remain stable across filters
+        const statusHours = f.totalTermHours || f.usedHours;
+        let status = "Balanced";
+        if (statusHours > f.maxHours) status = "Overloaded";
+        else if (statusHours === f.maxHours) status = "Full";
+        else if (statusHours < f.maxHours) status = "Underloaded";
+
+        const theorys = f.allocations.filter(a => a.subjectType?.toLowerCase() === "theory");
+        const labs = f.allocations.filter(a => a.subjectType?.toLowerCase() !== "theory");
+
+        finalResults.push({
+          ...f,
+          status: status,
+          termHours: statusHours, // For UI clarity
+          theory: `${theorys.length}/2`,
+          lab: `${labs.length}/1`,
+          theorySubjects: theorys.map(a => `${a.subjectCode} (${a.weeklyHours}h)`),
+          labSubjects: labs.map(a => `${a.subjectCode} (${a.weeklyHours}h)`),
+          totalSubjects: f.allocations.length,
+          remainingHours: f.maxHours - statusHours
+        });
+      });
+
+      // Narrow results to ONLY include subjects from the CURRENTLY selected semester type.
+      // We don't want to show "Even" subjects as unallocated when viewing "Odd" term.
+      const unallocatedSubjects = allSubjects.filter(s => {
+        // first check if it belongs to the current semester filter
+        if (!validSubjectCodesForAllocation.has(s.code)) return false;
+
+        const info = subjectAllocationMap[s.code];
+        if (!info) return true;
+
+        const isTheory = s.type?.toLowerCase() === "theory";
+        if (isTheory) return !info.allocated;
+        return info.count < info.max;
+      });
+
+      return res.json({
+        success: true,
+        message: "Loaded existing allocations",
+        facultyResults: finalResults,
+        unallocatedSubjects: unallocatedSubjects.map(s => ({
+          code: s.code,
+          name: s.name,
+          type: s.type,
+          weeklyHours: s.weeklyHours,
+          semester: s.semester,
+          credit: s.credit
+        })),
+        summary: {
+          totalFaculties: finalResults.length,
+          totalSubjects: allocationSubjects.length,
+          totalAllocations: allocationSubjects.length - unallocatedSubjects.length,
+          unallocatedSubjects: unallocatedSubjects.length,
+          totalTermSubjects: allSubjects.length,
+          totalTermUnallocated: unallocatedSubjects.length,
+          allocationSemesterType: allocationSemesterType
+        }
+      });
+    }
+
+    // Continue with allocation process...
+    console.log("🚀 Starting Strict Seniority-Based Allocation...");
+    console.log(`🎯 Allocating ONLY from semester type: ${allocationSemesterType}`);
+
+    /* ===============================
+       1️⃣ FETCH ALL REQUIRED DATA
+       =============================== */
+
+    // Get all approved faculties
+    const allApprovedFaculties = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER }).lean();
+
+    if (allApprovedFaculties.length === 0) {
+      return res.json({
+        success: false,
+        message: "No approved faculties found"
+      });
+    }
+
+    // Get submitted preferences (only final submissions)
+    const submittedPreferences = await SubmittedPreference.find({ final: true }).lean();
+
+    // Create a set of faculty usernames who have submitted preferences
+    const submittedFacultyUsernames = new Set(
+      submittedPreferences.map(pref => pref.facultyUsername.trim().toLowerCase())
+    );
+
+    // Filter faculties to only include those who have submitted preferences
+    const faculties = allApprovedFaculties.filter(faculty =>
+      submittedFacultyUsernames.has(faculty.username.trim().toLowerCase())
+    );
+
+    if (faculties.length === 0) {
+      return res.json({
+        success: false,
+        message: "No faculties have submitted their preferences. Allocation cannot proceed."
+      });
+    }
+
+    // Log excluded faculties
+    const excludedFaculties = allApprovedFaculties.filter(faculty =>
+      !submittedFacultyUsernames.has(faculty.username.trim().toLowerCase())
+    );
+
+    if (excludedFaculties.length > 0) {
+      console.log(`⚠️ Excluding ${excludedFaculties.length} faculties who haven't submitted preferences:`);
+      excludedFaculties.forEach(f => {
+        console.log(`   - ${f.name} (${f.role})`);
+      });
+    }
+
+    /* ===============================
+       2️⃣ PREPARE DATA STRUCTURES
+       =============================== */
+
+    // Create preference map
+    const prefMap = {};
+    submittedPreferences.forEach(pref => {
+      const username = pref.facultyUsername.trim().toLowerCase();
+      prefMap[username] = {
+        theory: (pref.theoryPreferences || []).sort((a, b) => a.priority - b.priority),
+        lab: (pref.labPreferences || []).sort((a, b) => a.priority - b.priority)
+      };
+    });
+
+    // Create maps for quick lookup - ONLY using allocationSubjects (from selected semester)
+    const subjectMap = {};
+    const theorySubjects = [];
+    const labSubjects = [];
+
+    allocationSubjects.forEach(subject => {
+      subjectMap[subject.code] = subject;
+      if (subject.type && subject.type.toLowerCase() === "theory") {
+        theorySubjects.push(subject);
+      } else if (subject.type && ["lab", "project"].includes(subject.type.toLowerCase())) {
+        labSubjects.push(subject);
+      }
+    });
+
+    console.log(`📖 Theory subjects (selected semester): ${theorySubjects.length}`);
+    console.log(`🔬 Lab/Project subjects (selected semester): ${labSubjects.length}`);
+
+    // Create subject allocation map for tracking - ONLY for selected semester subjects
+    const subjectAllocationMap = {};
+    allocationSubjects.forEach(subject => {
+      const typeLower = (subject.type || "").toLowerCase();
+      const isTheory = typeLower === "theory";
+      const isProject = typeLower === "project";
+      const isLab = typeLower === "lab";
+
+      let maxAllocations = 1;
+      if (isProject) {
+        maxAllocations = globalCounts.project;
+      } else if (isLab) {
+        maxAllocations = globalCounts.lab;
+      } else {
+        maxAllocations = globalCounts.theory;
+      }
+
+      subjectAllocationMap[subject.code] = {
+        allocated: false,
+        allocatedTo: [],
+        allocationCount: 0,
+        maxAllocations: maxAllocations,
+        isTheory: isTheory,
+        isProject: isProject
+      };
+    });
+
+    // Sort faculties by seniority
+    // designationPriority is now defined at the top of the handler
+
+    const seniorityOrder = [...faculties];
+    seniorityOrder.sort((a, b) => {
+      const priorityA = designationPriority[a.role?.toLowerCase()] || 99;
+      const priorityB = designationPriority[b.role?.toLowerCase()] || 99;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      return (b.experience || 0) - (a.experience || 0);
+    });
+
+    console.log("\n👥 STRICT FACULTY SENIORITY ORDER (only those with preferences):");
+    seniorityOrder.forEach((f, i) => {
+      console.log(`  ${i + 1}. ${f.name} - ${f.role} (${f.experience} years experience)`);
+    });
+
+    // Initialize faculty load tracking
+    const facultyLoad = {};
+    const facultyAllocations = {};
+    const facultySubjectHistory = {};
+
+    seniorityOrder.forEach((faculty, index) => {
+      const username = faculty.username.trim().toLowerCase();
+      const roleKey = faculty.role?.trim().toLowerCase() || "assistant professor";
+      const workload = workloadMap[roleKey] || {
+        maxHours: 16,
+        minTheory: 2,
+        minLab: 1
+      };
+
+      facultyLoad[username] = {
+        faculty: faculty,
+        maxHours: workload.maxHours,
+        minTheory: workload.minTheory,
+        minLab: workload.minLab,
+        usedHours: 0,
+        theoryCount: 0,
+        labCount: 0,
+        remainingHours: workload.maxHours,
+        allocations: [],
+        seniorityIndex: index,
+        nextAllocationType: "theory",
+        theoryPrefIndex: 0,
+        labPrefIndex: 0,
+        attemptedSubjects: new Set()
+      };
+
+      facultyAllocations[username] = [];
+      facultySubjectHistory[username] = new Set();
+    });
+
+    /* ===============================
+       3️⃣ HELPER FUNCTIONS
+       =============================== */
+
+    const getSubject = (code) => subjectMap[code] || null;
+
+    const canAllocateSubject = (username, subject, isTheory, forQuotaFill = false) => {
+      const load = facultyLoad[username];
+      if (!load) return false;
+
+      const subjectHours = subject.weeklyHours || 0;
+      const subjectCode = subject.code;
+
+      // 1. Check if subject is in the selected semester
+      if (!validSubjectCodesForAllocation.has(subjectCode)) {
+        console.log(`    ❌ [canAllocate] ${username} -> ${subjectCode}: Not in valid codes for this semester`);
+        return false;
+      }
+
+      // 2. Check workload hour limit
+      if (subjectHours > load.remainingHours) {
+        console.log(`    ❌ [canAllocate] ${username} -> ${subjectCode}: Hours (${subjectHours}) > Remaining (${load.remainingHours})`);
+        return false;
+      }
+
+      // 3. Check if faculty already has this subject
+      if (facultySubjectHistory[username].has(subjectCode)) {
+        console.log(`    ❌ [canAllocate] ${username} -> ${subjectCode}: Already in faculty history`);
+        return false;
+      }
+
+      // 4. For theory subjects - check if already allocated
+      if (isTheory) {
+        if (subjectAllocationMap[subjectCode]?.allocated) {
+          return false;
+        }
+      }
+
+      // 5. For lab subjects - check max allocation limit
+      if (!isTheory) {
+        if (subjectAllocationMap[subjectCode]?.allocationCount >= subjectAllocationMap[subjectCode]?.maxAllocations) {
+          return false;
+        }
+      }
+
+      // 6. Check if we've tried this subject before
+      if (load.attemptedSubjects.has(subjectCode)) {
+        return false;
+      }
+
+      // 7. Per-faculty caps (relaxed when finishing global subject quotas)
+      if (!forQuotaFill) {
+        if (isTheory && load.theoryCount >= 4) return false;
+        if (!isTheory && load.labCount >= 4) return false;
+      }
+
+      return true;
+    };
+
+    const getNextTheory = (username) => {
+      const load = facultyLoad[username];
+      const preferences = prefMap[username];
+      if (!preferences || !preferences.theory) return null;
+
+      // Try from preferences first
+      if (load.theoryPrefIndex < preferences.theory.length) {
+        for (let i = load.theoryPrefIndex; i < preferences.theory.length; i++) {
+          const pref = preferences.theory[i];
+          const subject = getSubject(pref.code);
+
+          const subjectIdToLog = subject ? subject._id : pref.code;
+          console.log("Trying preference:", subjectIdToLog);
+
+          if (subject && canAllocateSubject(username, subject, true)) {
+            load.theoryPrefIndex = i + 1;
+            return {
+              subject,
+              priority: pref.priority,
+              source: "preference",
+              preferenceIndex: i
+            };
+          } else {
+            console.log("Skipped due to limit or allocation");
+          }
+        }
+        load.theoryPrefIndex = preferences.theory.length;
+      }
+      return null;
+    };
+
+    const getNextLab = (username) => {
+      const load = facultyLoad[username];
+      const preferences = prefMap[username];
+      if (!preferences || !preferences.lab) return null;
+
+      // Try from preferences first
+      if (load.labPrefIndex < preferences.lab.length) {
+        for (let i = load.labPrefIndex; i < preferences.lab.length; i++) {
+          const pref = preferences.lab[i];
+          const subject = getSubject(pref.code);
+
+          const subjectIdToLog = subject ? subject._id : pref.code;
+          console.log("Trying preference:", subjectIdToLog);
+
+          if (subject && canAllocateSubject(username, subject, false)) {
+            load.labPrefIndex = i + 1;
+            return {
+              subject,
+              priority: pref.priority,
+              source: "preference",
+              preferenceIndex: i
+            };
+          } else {
+            console.log("Skipped due to limit or allocation");
+          }
+        }
+        load.labPrefIndex = preferences.lab.length;
+      }
+      return null;
+    };
+
+    const allocateSubject = (username, subject, isTheory, priority = 15, source = "available", forQuotaFill = false) => {
+      const load = facultyLoad[username];
+      if (!load || !subject) {
+        console.log(`    ❌ [allocateSubject] Missing load or subject for ${username}`);
+        return false;
+      }
+
+      const subjectHours = subject.weeklyHours || 0;
+      const subjectCode = subject.code;
+
+      // Final check before allocation
+      if (!subjectCode || !subjectAllocationMap[subjectCode]) {
+        console.log(`    ⚠️ Subject ${subjectCode} is not in the valid active semester subject list. Skipping allocation.`);
+        return false;
+      }
+
+      if (!canAllocateSubject(username, subject, isTheory, forQuotaFill)) {
+        return false;
+      }
+
+      // Create allocation record
+      const allocation = {
+        subjectCode: subjectCode,
+        subjectName: subject.name,
+        subjectType: isTheory ? "THEORY" : (subject.type?.toUpperCase() || "LAB"),
+        weeklyHours: subjectHours,
+        isTheory: isTheory,
+        semester: Number(subject.semester) || 1,
+        priority: priority,
+        source: source,
+        allocatedAt: new Date()
+      };
+
+      // Update tracking
+      load.allocations.push(allocation);
+      load.usedHours += subjectHours;
+      load.remainingHours -= subjectHours;
+      facultySubjectHistory[username].add(subjectCode);
+      load.attemptedSubjects.add(subjectCode);
+
+      if (isTheory) {
+        load.theoryCount++;
+      } else {
+        load.labCount++;
+      }
+
+      // Update subject allocation counters
+      subjectAllocationMap[subjectCode].allocationCount++;
+      subjectAllocationMap[subjectCode].allocatedTo.push(username);
+
+      // If limits reached, mark as fully allocated
+      if (subjectAllocationMap[subjectCode].allocationCount >= subjectAllocationMap[subjectCode].maxAllocations) {
+        subjectAllocationMap[subjectCode].allocated = true;
+      }
+
+      facultyAllocations[username].push(allocation);
+
+      return true;
+    };
+
+    // Assign faculty to subjects until each subject reaches globalCounts (theory/lab/project).
+    // Preference rounds often stop early; this phase fills remaining quota in seniority order.
+    const fillGlobalFacultyQuotas = () => {
+      const maxRounds = 3000;
+      for (let round = 0; round < maxRounds; round++) {
+        let progress = false;
+
+        const needySubjects = allocationSubjects
+          .map(s => {
+            const info = subjectAllocationMap[s.code];
+            if (!info) return null;
+            const deficit = info.maxAllocations - info.allocationCount;
+            if (deficit <= 0) return null;
+            const isTheory = (s.type || "").toLowerCase() === "theory";
+            return { subject: s, deficit, isTheory };
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.deficit - a.deficit);
+
+        if (needySubjects.length === 0) return;
+
+        for (const { subject, isTheory } of needySubjects) {
+          for (const faculty of seniorityOrder) {
+            const username = faculty.username.trim().toLowerCase();
+            if (allocateSubject(username, subject, isTheory, 15, "global-quota-fill", true)) {
+              progress = true;
+              break;
+            }
+          }
+        }
+
+        if (!progress) return;
+      }
+    };
+
+    /* ===============================
+       4️⃣ MAIN ROUND-BASED ALLOCATION LOOP
+       =============================== */
+
+    console.log("\n" + "=".repeat(70));
+    console.log("🏆 STARTING ROUND-BASED ALLOCATION PROCESS (Fairness First)");
+    console.log("=".repeat(70));
+
+    let globalAllocationPossible = true;
+    let roundNumber = 1;
+
+    while (globalAllocationPossible) {
+      console.log(`\n🔄 Round start: ${roundNumber}`);
+      console.log("Round start");
+      globalAllocationPossible = false;
+
+      for (const faculty of seniorityOrder) {
+        try {
+          const username = faculty.username.trim().toLowerCase();
+          const load = facultyLoad[username];
+
+          if (load.remainingHours <= 0) continue; // workload already met
+
+          // If they still have remaining hours, check if they have any preferences left to evaluate
+          if (load.theoryPrefIndex >= (prefMap[username]?.theory?.length || 0) &&
+            load.labPrefIndex >= (prefMap[username]?.lab?.length || 0)) {
+            continue; // completely exhausted all preferences
+          }
+
+          console.log("Allocating for faculty:", faculty._id);
+          let subjectAllocatedThisRound = false;
+
+          // STEP: TRY THEORY FIRST (in preference order)
+          while (!subjectAllocatedThisRound && load.remainingHours > 0) {
+            const nextTheory = getNextTheory(username);
+            if (!nextTheory) break; // exhausted theories
+
+            if (allocateSubject(username, nextTheory.subject, true, nextTheory.priority, nextTheory.source)) {
+              console.log("Allocated subject:", nextTheory.subject._id);
+              subjectAllocatedThisRound = true;
+              globalAllocationPossible = true; // We made an allocation, so another round is possible
+            } else {
+              console.log("Skipped due to limit or allocation");
+            }
+          }
+
+          // STEP: TRY LAB OR PROJECT if no theory was allocated
+          while (!subjectAllocatedThisRound && load.remainingHours > 0) {
+            const nextLab = getNextLab(username);
+            if (!nextLab) break; // exhausted labs
+
+            if (allocateSubject(username, nextLab.subject, false, nextLab.priority, nextLab.source)) {
+              console.log("Allocated subject:", nextLab.subject._id);
+              subjectAllocatedThisRound = true;
+              globalAllocationPossible = true; // We made an allocation, so another round is possible
+            } else {
+              console.log("Skipped due to limit or allocation");
+            }
+          }
+
+        } catch (err) {
+          console.error(`    ❌ Error processing faculty ${faculty ? faculty.name : 'Unknown'}:`, err);
+          continue;
+        }
+      }
+      roundNumber++;
+    }
+
+    fillGlobalFacultyQuotas();
+
+    // Log final exhaustion summaries
+    for (const faculty of seniorityOrder) {
+      const username = faculty.username.trim().toLowerCase();
+      const load = facultyLoad[username];
+
+      if (load.remainingHours > 0) {
+        if (load.usedHours === 0) {
+          console.log(`   UNDERLOAD: No valid subjects for faculty`);
+        }
+        console.log(`   ⚠️ Exhausted preferences. Final load: ${load.usedHours}/${load.maxHours}h`);
+      } else {
+        console.log(`   ✨ Workload fully satisfied: ${load.usedHours}h`);
+      }
+    }
+
+    // Final status update for all faculties
+    for (const username in facultyLoad) {
+      const load = facultyLoad[username];
+      load.underloaded = load.usedHours < load.maxHours;
+      load.overloaded = load.usedHours > load.maxHours;
+      load.full = load.usedHours === load.maxHours;
+    }
+
+    /* ===============================
+       5️⃣ POST-ALLOCATION ANALYSIS
+       =============================== */
+
+    console.log("\n" + "=".repeat(70));
+    console.log("📊 POST-ALLOCATION ANALYSIS");
+    console.log("=".repeat(70));
+
+    // Identify final unallocated subjects.
+    // CRITICAL FIX: We ONLY report subjects from the CURRENTLY selected semester type.
+    // If we are running Odd term allocation, we should NOT list Even subjects as "Unallocated".
+    const finalUnallocatedSubjects = allocationSubjects.filter(subject => {
+      const allocationInfo = subjectAllocationMap[subject.code];
+      const isTheory = subject.type?.toLowerCase() === "theory";
+
+      if (isTheory) {
+        return !allocationInfo?.allocated;
+      } else {
+        return !allocationInfo || allocationInfo.allocationCount < allocationInfo.maxAllocations;
+      }
+    });
+
+    // Identify subjects from other semesters (not considered for allocation)
+    const subjectsFromOtherSemesters = allSubjects.filter(subject =>
+      !validSubjectCodesForAllocation.has(subject.code)
+    );
+
+    if (subjectsFromOtherSemesters.length > 0) {
+      console.log(`ℹ️ Internal Note: ${subjectsFromOtherSemesters.length} subjects from other semesters were ignored in this run.`);
+    }
+
+    // Identify underloaded faculties
+    const underloadedFaculties = [];
+    const fullFaculties = [];
+    const overloadedFaculties = [];
+
+    for (const username in facultyLoad) {
+      const load = facultyLoad[username];
+
+      if (load.usedHours < load.maxHours) {
+        underloadedFaculties.push({
+          faculty: load.faculty.name,
+          designation: load.faculty.role,
+          username: load.faculty.username,
+          seniorityRank: load.seniorityIndex + 1,
+          usedHours: load.usedHours,
+          maxHours: load.maxHours,
+          remainingHours: load.maxHours - load.usedHours,
+          theoryCount: load.theoryCount,
+          labCount: load.labCount,
+          minTheory: load.minTheory,
+          minLab: load.minLab,
+          allocations: load.allocations.map(a => ({
+            subjectCode: a.subjectCode,
+            subjectType: (a.subjectType || "THEORY").toUpperCase(),
+            weeklyHours: a.weeklyHours,
+            source: a.source,
+            priority: a.priority
+          }))
+        });
+      } else if (load.usedHours === load.maxHours) {
+        fullFaculties.push({
+          faculty: load.faculty.name,
+          designation: load.faculty.role,
+          username: load.faculty.username,
+          seniorityRank: load.seniorityIndex + 1,
+          usedHours: load.usedHours,
+          maxHours: load.maxHours,
+          theoryCount: load.theoryCount,
+          labCount: load.labCount,
+          minTheory: load.minTheory,
+          minLab: load.minLab
+        });
+      } else if (load.usedHours > load.maxHours) {
+        overloadedFaculties.push({
+          faculty: load.faculty.name,
+          designation: load.faculty.role,
+          username: load.faculty.username,
+          seniorityRank: load.seniorityIndex + 1,
+          usedHours: load.usedHours,
+          maxHours: load.maxHours,
+          overloadAmount: load.usedHours - load.maxHours,
+          theoryCount: load.theoryCount,
+          labCount: load.labCount,
+          minTheory: load.minTheory,
+          minLab: load.minLab
+        });
+      }
+    }
+
+    console.log(`\n📊 ALLOCATION STATISTICS:`);
+    console.log(`   Total Faculties with Preferences: ${seniorityOrder.length}`);
+    console.log(`   Total Subjects: ${allSubjects.length}`);
+    console.log(`   Allocated Subjects: ${allSubjects.length - finalUnallocatedSubjects.length}/${allSubjects.length}`);
+    console.log(`   Unallocated Subjects: ${finalUnallocatedSubjects.length}`);
+    console.log(`   Total Allocations: ${Object.values(facultyAllocations).reduce((sum, arr) => sum + arr.length, 0)}`);
+    console.log(`   Underloaded Faculties: ${underloadedFaculties.length}`);
+    console.log(`   Full Faculties: ${fullFaculties.length}`);
+    console.log(`   Overloaded Faculties: ${overloadedFaculties.length}`);
+
+    console.log(`\n📦 UNALLOCATED SUBJECTS SUMMARY:`);
+    console.log(`   From selected semester: ${finalUnallocatedSubjects.length}`);
+    console.log(`   From other semesters: ${subjectsFromOtherSemesters.length}`);
+    console.log(`   Total: ${finalUnallocatedSubjects.length}`);
+
+    /* ===============================
+       6️⃣ SAVE ALLOCATIONS TO DATABASE
+       =============================== */
+
+    console.log("\n" + "=".repeat(70));
+    console.log("💾 SAVING TO DATABASE");
+    console.log("=".repeat(70));
+
+    const currentYear = new Date().getFullYear();
+    const academicYear = reqAcademicYear || `${currentYear}-${currentYear + 1}`;
+
+    // Target deletion - only clear same academic year and term
+    let deleteQuery = {
+      academicYear: academicYear,
+      term: reqTerm || ((parseInt(allocationSemesterType) % 2 === 1) ? "Odd" : "Even")
+    };
+
+    // Additional semester-based safety filter if applicable
+    if (reqTerm === "Odd") {
+      deleteQuery.semester = { $in: [1, 3, 5, 7] };
+    } else if (reqTerm === "Even") {
+      deleteQuery.semester = { $in: [2, 4, 6, 8] };
+    } else if (!isNaN(parseInt(allocationSemesterType))) {
+      deleteQuery.semester = parseInt(allocationSemesterType);
+    }
+
+    const quotaDeficits = allocationSubjects
+      .map(s => {
+        const info = subjectAllocationMap[s.code];
+        const required = info ? info.maxAllocations : globalCounts.theory;
+        const assigned = info ? info.allocationCount : 0;
+        return {
+          code: s.code,
+          name: s.name,
+          type: s.type,
+          required,
+          assigned
+        };
+      })
+      .filter(x => x.assigned < x.required);
+
+    if (quotaDeficits.length > 0) {
+      console.log(`[strict-allocate] Global faculty quota not met:`, quotaDeficits);
+      return res.json({
+        success: false,
+        message:
+          "Allocation incomplete: each subject must have exactly the number of faculty set in Settings (theory / lab / project faculty counts). Not enough capacity or constraints blocked further assignments.",
+        globalCounts,
+        quotaDeficits
+      });
+    }
+
+    console.log(`🗑️ Clearing existing allocations with query:`, deleteQuery);
+    await FacultyAllocation.deleteMany(deleteQuery);
+
+    const allocationRecords = [];
+
+    for (const username in facultyAllocations) {
+      const load = facultyLoad[username];
+      const faculty = load.faculty;
+
+      for (const alloc of facultyAllocations[username]) {
+        const subject = getSubject(alloc.subjectCode);
+
+        // STRICT VALIDATION: Only use subjects found in the database
+        if (!subject) {
+          console.error(`❌ [SAVE] Subject ${alloc.subjectCode} NOT found in database. Skipping allocation for ${username}.`);
+          continue;
+        }
+
+        // Validate priority within schema limits (1-25)
+        let priority = alloc.priority || 15;
+        if (priority > 25) priority = 25;
+        if (priority < 1) priority = 1;
+
+        console.log(`✅ [SAVE] Assigning ${subject.code} (${subject.name}) to ${username}`);
+
+        allocationRecords.push({
+          facultyId: faculty._id,
+          facultyUsername: username.toLowerCase(),
+          facultyName: faculty.name,
+          facultyDesignation: normalizeDesignation(faculty.role),
+          facultyExperience: faculty.experience,
+          department: faculty.department,
+
+          subjectId: subject._id,
+          subjectCode: subject.code,
+          subjectName: subject.name,
+          subjectType: (alloc.subjectType || "THEORY").toUpperCase(),
+          subjectAbbreviation: subject.abbreviation || subject.code,
+
+          weeklyHours: alloc.weeklyHours,
+          semester: alloc.semester,
+          priority: priority,
+
+          academicYear: academicYear,
+          term: reqTerm || ((parseInt(alloc.semester) % 2 === 1) ? "Odd" : "Even"),
+
+          allocationType: "Complete",
+          allocationStrategy: "Strict Seniority",
+          weekNumber: 1,
+          isActive: true,
+          parallelGroupId: subject?.parallelGroupId || "",
+          allocatedAt: alloc.allocatedAt || new Date()
+        });
+      }
+    }
+
+    // Save allocations
+    let savedCount = 0;
+    if (allocationRecords.length > 0) {
+      try {
+        await FacultyAllocation.insertMany(allocationRecords);
+        savedCount = allocationRecords.length;
+        console.log(`✅ Successfully saved ${savedCount} allocation records`);
+      } catch (saveError) {
+        console.error("❌ Error saving allocations:", saveError.message);
+        // Try to save individually
+        for (let i = 0; i < allocationRecords.length; i++) {
+          try {
+            await FacultyAllocation.create(allocationRecords[i]);
+            savedCount++;
+          } catch (err) {
+            console.error(`  ❌ Failed to save record ${i}:`, err.message);
+          }
+        }
+        console.log(`⚠️ Partially saved ${savedCount}/${allocationRecords.length} records`);
+      }
+    } else {
+      console.log("⚠️ No allocation records to save");
+    }
+
+    /* ===============================
+       7️⃣ PREPARE FINAL RESULTS
+       =============================== */
+
+    // Prepare faculty results — EVERY preference-submitted faculty must appear
+    let finalResults = [];
+    seniorityOrder.forEach(faculty => {
+      const username = faculty.username.trim().toLowerCase();
+      const load = facultyLoad[username];
+
+      if (load) {
+        let theoryAllocations = load.allocations.filter(a => a.isTheory);
+        let labAllocations = load.allocations.filter(a => !a.isTheory);
+
+        // Filter based on targetSemester if it's a specific one
+        if (targetSemester && targetSemester !== "ALL" && targetSemester !== (reqTerm === "Odd" ? "ODD" : "EVEN")) {
+          const isNumeric = !isNaN(parseInt(targetSemester));
+          const oddSems = [1, 3, 5, 7];
+          const evenSems = [2, 4, 6, 8];
+
+          const filterAllocations = (allocs) => allocs.filter(a => {
+            if (isNumeric) return String(a.semester) === String(targetSemester);
+            if (targetSemester === "ODD") return oddSems.includes(Number(a.semester));
+            if (targetSemester === "EVEN") return evenSems.includes(Number(a.semester));
+            return true;
+          });
+
+          theoryAllocations = filterAllocations(theoryAllocations);
+          labAllocations = filterAllocations(labAllocations);
+        }
+
+        // Determine status — always based on ACTUAL total used hours (no filtering)
+        let status = "completed";
+        if (load.usedHours > load.maxHours) status = "overloaded";
+        else if (load.usedHours < load.maxHours) status = "underload";
+
+        // ALWAYS include faculty — even if they received 0 allocations
+        finalResults.push({
+          facultyId: load.faculty._id,
+          allocatedSubjects: load.allocations.map(a => a.subjectCode),
+          totalHours: load.usedHours,
+
+          faculty: load.faculty.name,
+          username: load.faculty.username,           // ← Fix 2: include username
+          designation: load.faculty.role,
+          experience: load.faculty.experience,
+          seniorityRank: load.seniorityIndex + 1,
+          maxHours: load.maxHours,
+          usedHours: load.usedHours,
+          underloaded: load.usedHours < load.maxHours,
+          overloaded: load.usedHours > load.maxHours,
+          full: load.usedHours === load.maxHours,
+          status: status,                             // ← "underload" when 0 subjects
+          theory: `${load.theoryCount}/${load.minTheory}`,
+          lab: `${load.labCount}/${load.minLab}`,
+          theorySubjects: theoryAllocations.map(a => `${a.subjectCode} (${a.weeklyHours}h)`),
+          labSubjects: labAllocations.map(a => `${a.subjectCode} (${a.weeklyHours}h)`),
+          totalSubjects: theoryAllocations.length + labAllocations.length,
+          remainingHours: load.maxHours - load.usedHours
+        });
+      }
+    });
+
+    // Filter unallocated subjects too
+    let filteredUnallocated = finalUnallocatedSubjects;
+    if (targetSemester && targetSemester !== "ALL" && targetSemester !== (reqTerm === "Odd" ? "ODD" : "EVEN")) {
+      const isNumeric = !isNaN(parseInt(targetSemester));
+      const oddSems = [1, 3, 5, 7];
+      const evenSems = [2, 4, 6, 8];
+
+      filteredUnallocated = finalUnallocatedSubjects.filter(s => {
+        if (isNumeric) return String(s.semester) === String(targetSemester);
+        if (targetSemester === "ODD") return oddSems.includes(Number(s.semester));
+        if (targetSemester === "EVEN") return evenSems.includes(Number(s.semester));
+        return true;
+      });
+    }
+
+    // Return results
+    res.json({
+      success: true,
+      message: `Allocated ${savedCount} subject allocations using strict seniority-based strategy for ${reqTerm} term`,
+      summary: {
+        totalFaculties: finalResults.length,
+        totalSubjects: filteredUnallocated.length + savedCount, // approximation for filtered view
+        totalAllocations: savedCount,
+        unallocatedSubjects: filteredUnallocated.length,
+        totalTermSubjects: allSubjects.length,
+        totalTermUnallocated: finalUnallocatedSubjects.length,
+        allocationStrategy: "Strict Seniority",
+        allocationSemesterType: targetSemester || allocationSemesterType
+      },
+      facultyResults: finalResults,
+      unallocatedSubjects: filteredUnallocated.map(s => ({
+        code: s.code,
+        name: s.name,
+        type: s.type,
+        weeklyHours: s.weeklyHours,
+        semester: s.semester,
+        credit: s.credit,
+        reason: validSubjectCodesForAllocation.has(s.code) ?
+          "Could not be allocated" :
+          "Not in current filter"
+      })),
+      underloadedFaculties: underloadedFaculties,
+      fullFaculties: fullFaculties,
+      overloadedFaculties: overloadedFaculties,
+      excludedFaculties: excludedFaculties.map(f => ({
+        name: f.name,
+        designation: f.role,
+        username: f.username
+      }))
+    });
+
+  } catch (err) {
+    // ... (rest of error block stays same)
+    console.error("❌ Strict allocation error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  }
+});
+
+
+// Add this to your server.js
+app.post("/admin/clear-allocations", async (req, res) => {
+  try {
+    const result = await FacultyAllocation.deleteMany({});
+    console.log(`🗑️ Clear All Allocations: Successfully deleted ${result.deletedCount} records.`);
+    res.json({ success: true, message: `All allocations cleared (${result.deletedCount} records)` });
+  } catch (err) {
+    console.error("Clear allocations error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+/* ================= VALIDATE WORKLOAD LIMITS ================= */
+app.post("/admin/validate-workload-limits", async (req, res) => {
+  try {
+    const { config } = req.body;
+
+    if (!config) {
+      return res.json({
+        success: false,
+        message: "No configuration provided"
+      });
+    }
+
+    const warnings = [];
+    const designations = ["Professor", "Associate Professor", "Assistant Professor"];
+
+    // Get current allocations to check against
+    const allocations = await FacultyAllocation.aggregate([
+      {
+        $lookup: {
+          from: "faculties",
+          localField: "facultyUsername",
+          foreignField: "username",
+          as: "facultyInfo"
+        }
+      },
+      {
+        $unwind: "$facultyInfo"
+      },
+      {
+        $group: {
+          _id: "$facultyInfo._id",
+          facultyName: { $first: "$facultyInfo.name" },
+          facultyUsername: { $first: "$facultyInfo.username" },
+          designation: { $first: "$facultyInfo.role" },
+          totalHours: { $sum: "$weeklyHours" }
+        }
+      }
+    ]);
+
+    // Check each faculty's current load against new limits
+    allocations.forEach(allocation => {
+      const designation = allocation.designation;
+      const configForDesignation = config[designation];
+
+      if (configForDesignation) {
+        const newMaxHours = configForDesignation.weeklyHours;
+        const currentHours = allocation.totalHours || 0;
+
+        if (currentHours > newMaxHours) {
+          warnings.push({
+            facultyName: allocation.facultyName,
+            designation: designation,
+            currentHours: currentHours,
+            newMaxHours: newMaxHours,
+            overloadAmount: currentHours - newMaxHours,
+            message: `${allocation.facultyName} (${designation}) currently has ${currentHours} hours but new max is ${newMaxHours} hours (overload: ${currentHours - newMaxHours} hours)`
+          });
+        }
+      }
+    });
+
+    // Also check if limits are reasonable
+    designations.forEach(designation => {
+      const configForDesignation = config[designation];
+      if (configForDesignation) {
+        const weeklyHours = configForDesignation.weeklyHours;
+        const minTheory = configForDesignation.minTheory || 0;
+        const minLab = configForDesignation.minLab || 0;
+
+        // Check if hours are too low for minimum subjects
+        const estimatedMinHours = (minTheory * 2) + (minLab * 3);
+        if (weeklyHours < estimatedMinHours) {
+          warnings.push({
+            type: "minimum_warning",
+            designation: designation,
+            weeklyHours: weeklyHours,
+            minTheory: minTheory,
+            minLab: minLab,
+            estimatedMinHours: estimatedMinHours,
+            message: `${designation}: ${weeklyHours} hours may be too low for ${minTheory} theory + ${minLab} lab subjects. Estimated minimum: ${estimatedMinHours} hours`
+          });
+        }
+
+        // Check if hours are too high (unreasonable)
+        const estimatedMaxHours = (minTheory * 4) + (minLab * 6);
+        if (weeklyHours > estimatedMaxHours * 1.5) {
+          warnings.push({
+            type: "maximum_warning",
+            designation: designation,
+            weeklyHours: weeklyHours,
+            minTheory: minTheory,
+            minLab: minLab,
+            estimatedMaxHours: estimatedMaxHours,
+            message: `${designation}: ${weeklyHours} hours seems very high for ${minTheory} theory + ${minLab} lab subjects. Estimated reasonable maximum: ${estimatedMaxHours} hours`
+          });
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      warnings: warnings,
+      hasWarnings: warnings.length > 0
+    });
+
+  } catch (err) {
+    console.error("Validate workload limits error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error validating workload limits"
+    });
+  }
+});
+
+/* ================= GET ALL CONFIGURATION DATA ================= */
+// Get all configuration data for admin rules display
+app.get("/admin/get-all-config", async (req, res) => {
+  try {
+    // Fetch all three types of data
+    const [timelineData, workloadData, subjectsData] = await Promise.all([
+      Timeline.findOne(),
+      WorkloadConfig.find(),
+      Subject.find().sort({ semester: 1, code: 1 })
+    ]);
+
+    // Process timeline rules
+    const rules = timelineData?.rules || {};
+    const timelineRules = {};
+    if (rules instanceof Map) {
+      // Convert Map to object
+      for (const [key, value] of rules) {
+        timelineRules[key] = value;
+      }
+    } else {
+      // Already an object
+      Object.assign(timelineRules, rules);
+    }
+
+    // Process workload config
+    const workloadConfig = {};
+    if (workloadData && Array.isArray(workloadData)) {
+      workloadData.forEach(config => {
+        workloadConfig[config.designation] = {
+          weeklyHours: config.weeklyHours,
+          minTheory: config.minTheory,
+          minLab: config.minLab
+        };
+      });
+    }
+
+    // Process subjects data
+    const subjects = subjectsData.map(subject => ({
+      code: subject.code,
+      name: subject.name,
+      type: subject.type || "Theory",
+      weeklyHours: subject.weeklyHours || subject.hours || 0,
+      semester: subject.semester || "N/A",
+      credit: subject.credit || 0
+    }));
+
+    res.json({
+      success: true,
+      timeline: timelineRules,
+      workload: workloadConfig,
+      subjects: subjects
+    });
+
+  } catch (err) {
+    console.error("Get all config error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// Alternative endpoint: Get subjects data specifically
+app.get("/admin/get-subjects-data", async (req, res) => {
+  try {
+    const subjects = await Subject.find({})
+      .sort({ semester: 1, code: 1 })
+      .lean();
+
+    // Map subjects to ensure consistent field names
+    const mappedSubjects = subjects.map(sub => ({
+      _id: sub._id,
+      semester: sub.semester,
+      name: sub.name,
+      code: sub.code,
+      abbreviation: sub.abbreviation || sub.code,
+      credit: sub.credit || 0,
+      weeklyHours: sub.weeklyHours || sub.hours || 0,
+      type: sub.type || "Theory",
+      parallelGroupId: sub.parallelGroupId || ""
+    }));
+
+    res.json({
+      success: true,
+      subjects: mappedSubjects
+    });
+  } catch (err) {
+    console.error("Get subjects data error:", err);
+    res.status(500).json({
+      success: false,
+      subjects: []
+    });
+  }
+});
+
+// GET faculty preference status
+app.get("/faculty/preference-status/:facultyId", async (req, res) => {
+  try {
+    const faculty = await Faculty.findById(req.params.facultyId)
+      .select("preferenceStatus preferenceRejectionReason");
+
+    if (!faculty) {
+      return res.json({ success: false });
+    }
+
+    res.json({
+      success: true,
+      status: faculty.preferenceStatus,
+      reason: faculty.preferenceRejectionReason
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+// ADD THIS ROUTE FOR SENDING MESSAGES TO FACULTY
+app.post("/admin/send-message-to-faculty", async (req, res) => {
+  try {
+    const { facultyId, message, type, date } = req.body;
+
+    if (!facultyId || !message) {
+      return res.json({ success: false, message: "Missing data" });
+    }
+
+    const faculty = await Faculty.findById(facultyId);
+    if (!faculty) {
+      return res.json({ success: false, message: "Faculty not found" });
+    }
+
+    // Initialize messages array if it doesn't exist
+    if (!faculty.messages) {
+      faculty.messages = [];
+    }
+
+    // Add message
+    faculty.messages.push({
+      text: message,
+      type: type || "info",
+      date: date || new Date(),
+      read: false
+    });
+
+    await faculty.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Send message error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+/* ================= FACULTY PREFERENCES ================= */
+app.post("/faculty/submit-preferences", async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: "preferenceDeadline" });
+
+    if (setting && Date.now() > Number(setting.value)) {
+      return res.status(403).json({
+        success: false,
+        message: "Preference submission deadline expired"
+      });
+    }
+
+    const { username, theoryPreferences, labPreferences, final } = req.body;
+
+    if (
+      !username ||
+      !Array.isArray(theoryPreferences) ||
+      !Array.isArray(labPreferences)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid data"
+      });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+
+    // 1️⃣ Save in FacultyPreference
+    // 1️⃣ Save in FacultyPreference (working copy)
+    const facultyPref = await FacultyPreference.findOneAndUpdate(
+      { facultyUsername: cleanUsername },
+      {
+        $set: {
+          facultyUsername: cleanUsername,
+          theoryPreferences,
+          labPreferences,
+          final: final === true,
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true, new: true }
+    );
+
+    // 2️⃣ IF FINAL → save snapshot in SubmittedPreference
+    if (final === true) {
+      const faculty = await Faculty.findOne({
+        username: { $regex: `^${cleanUsername}$`, $options: "i" }
+      });
+
+      await SubmittedPreference.findOneAndUpdate(
+        { facultyUsername: cleanUsername },
+        {
+          $set: {
+            facultyUsername: cleanUsername,
+            name: faculty?.name || "Unknown",
+            designation: faculty?.role || "Not specified",
+            experience: faculty?.experience || 0,
+            theoryPreferences,
+            labPreferences,
+            final: true
+          }
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Save preference error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+/* ================= ADMIN - SET PREFERENCE LOCK ================= */
+app.post("/admin/set-preference-lock", async (req, res) => {
+  try {
+    const { locked } = req.body;
+
+    if (typeof locked !== 'boolean') {
+      return res.json({
+        success: false,
+        message: "Invalid lock state"
+      });
+    }
+
+    // Update the lock setting
+    await Settings.findOneAndUpdate(
+      { key: "preferenceLocked" },
+      { value: locked },
+      { upsert: true }
+    );
+
+    // If unlocking, also reset the reminder flag so notifications work again
+    if (!locked) {
+      await Settings.findOneAndUpdate(
+        { key: "preferenceReminderSent" },
+        { value: false },
+        { upsert: true }
+      );
+    }
+
+    res.json({
+      success: true,
+      message: locked ? "Preferences locked successfully" : "Preferences unlocked successfully"
+    });
+
+  } catch (err) {
+    console.error("Set preference lock error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+/* ================= MANUAL DEADLINE NOTIFICATION TRIGGER ================= */
+app.post("/admin/send-deadline-notifications", async (req, res) => {
+  try {
+    const deadlineSetting = await Settings.findOne({ key: "preferenceDeadline" });
+    if (!deadlineSetting) {
+      return res.json({
+        success: false,
+        message: "No deadline set"
+      });
+    }
+
+    const deadline = Number(deadlineSetting.value);
+
+    // Get faculties who have submitted final preferences
+    const submitted = await SubmittedPreference.find({ final: true });
+    const submittedUsernames = submitted.map(p =>
+      p.facultyUsername.trim().toLowerCase()
+    );
+
+    // Get all approved faculties
+    const faculties = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER });
+
+    // Identify faculties who haven't submitted
+    const pendingFaculties = faculties.filter(f =>
+      !submittedUsernames.includes(f.username.trim().toLowerCase())
+    );
+
+    // Create email transporter
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+
+    const sentEmails = [];
+    const failedEmails = [];
+
+    // Send email to each pending faculty
+    for (const faculty of pendingFaculties) {
+      if (faculty.email) {
+        try {
+          await transporter.sendMail({
+            from: `"Smart Timetable System" <${process.env.EMAIL_USER}>`,
+            to: faculty.email,
+            subject: "Subject Preference Deadline Expired",
+            html: `
+              <p>Dear ${faculty.name},</p>
+              <p>The deadline for submitting your subject preferences has <strong>expired</strong>.</p>
+              <p>You did not submit your subject preferences within the specified time period.</p>
+              <p><strong>Please contact the administration department immediately:</strong></p>
+              <p>Best regards,<br>
+              Smart Timetable Administration</p>
+            `
+          });
+
+          sentEmails.push(faculty.email);
+
+          // Add message to faculty dashboard
+          if (!faculty.messages) faculty.messages = [];
+          faculty.messages.push({
+            text: `⚠️ Subject preference deadline has expired. You did not submit your preferences. Please contact admin immediately.`,
+            type: "deadline",
+            date: new Date(),
+            read: false
+          });
+
+          await faculty.save();
+
+        } catch (emailErr) {
+          failedEmails.push({
+            email: faculty.email,
+            error: emailErr.message
+          });
+        }
+      }
+    }
+
+    // Mark that notifications have been sent
+    await Settings.findOneAndUpdate(
+      { key: "preferenceReminderSent" },
+      { value: deadline },
+      { upsert: true }
+    );
+
+    res.json({
+      success: true,
+      message: `Sent ${sentEmails.length} deadline expiry notifications`,
+      sent: sentEmails,
+      failed: failedEmails,
+      totalPending: pendingFaculties.length
+    });
+
+  } catch (err) {
+    console.error("Manual deadline notification error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+/* ================= CHECK DEADLINE STATUS ================= */
+app.get("/admin/deadline-status", async (req, res) => {
+  try {
+    const deadlineSetting = await Settings.findOne({ key: "preferenceDeadline" });
+    const reminderSentSetting = await Settings.findOne({ key: "preferenceReminderSent" });
+
+    const deadline = deadlineSetting ? Number(deadlineSetting.value) : null;
+    const reminderSent = reminderSentSetting?.value || false;
+    const hasDeadlinePassed = deadline ? Date.now() > deadline : false;
+    const notificationsSent = reminderSent === deadline;
+
+    // Get counts
+    const totalFaculties = await Faculty.countDocuments({ approved: true });
+    const submittedCount = await SubmittedPreference.countDocuments({ final: true });
+    const pendingCount = totalFaculties - submittedCount;
+
+    res.json({
+      success: true,
+      deadline: deadline,
+      deadlineDate: deadline ? new Date(deadline).toLocaleString() : null,
+      hasDeadlinePassed: hasDeadlinePassed,
+      notificationsSent: notificationsSent,
+      totalFaculties: totalFaculties,
+      submittedCount: submittedCount,
+      pendingCount: pendingCount,
+      pendingPercentage: totalFaculties > 0 ? Math.round((pendingCount / totalFaculties) * 100) : 0
+    });
+
+  } catch (err) {
+    console.error("Get deadline status error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+// In your server.js or app.js file:
+
+// Get allocation details for a specific faculty
+app.get('/faculty/allocations/:facultyId', async (req, res) => {
+  try {
+    const { facultyId } = req.params;
+
+    // Query the database for allocations
+    // Assuming you have an Allocation model
+    const allocations = await FacultyAllocation.find({
+      facultyId: facultyId,
+      isActive: true
+    }).lean();
+
+    // Format the response
+    const formattedAllocations = allocations.map(allocation => ({
+      subjectCode: allocation.subjectCode,
+      subjectName: allocation.subjectName,
+      subjectType: (allocation.subjectType || "THEORY").toUpperCase(),
+      weeklyHours: allocation.weeklyHours,
+      semester: allocation.semester,
+      allocationDate: allocation.allocatedAt
+    }));
+
+    res.json({
+      success: true,
+      allocations: formattedAllocations
+    });
+
+  } catch (error) {
+    console.error('Error fetching faculty allocations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching allocation details'
+    });
+  }
+});
+
+// Get allocation status for a faculty
+app.get('/faculty/allocations/status', async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username required'
+      });
+    }
+
+    // Find faculty by username
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${username}$`, $options: "i" }
+    });
+
+    if (!faculty) {
+      return res.status(404).json({
+        success: false,
+        message: 'Faculty not found'
+      });
+    }
+
+    // Check if faculty has any allocations
+    const allocationCount = await FacultyAllocation.countDocuments({
+      facultyUsername: username.toLowerCase(),
+      isActive: true
+    });
+
+    res.json({
+      success: true,
+      allocated: allocationCount > 0,
+      count: allocationCount
+    });
+
+  } catch (error) {
+    console.error('Error checking allocation status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking allocation status'
+    });
+  }
+});
+
+/* ================= FACULTY INFO ENDPOINT ================= */
+app.get("/faculty/info", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: "Username is required"
+      });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+
+    console.log(`📋 Fetching faculty info for username: ${cleanUsername}`);
+
+    // Find faculty by username
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${cleanUsername}$`, $options: "i" }
+    }).select("-password -resetToken -resetTokenExpiry -loginToken -loginTokenExpiry");
+
+    if (!faculty) {
+      return res.status(404).json({
+        success: false,
+        message: "Faculty not found"
+      });
+    }
+
+    console.log(`✅ Found faculty: ${faculty.name} (${faculty.role})`);
+
+    // Get faculty allocations count
+    const allocationCount = await FacultyAllocation.countDocuments({
+      facultyUsername: { $regex: `^${cleanUsername}$`, $options: "i" }
+    });
+
+    // Get unread messages count
+    const unreadMessages = faculty.messages ?
+      faculty.messages.filter(msg => !msg.read).length : 0;
+
+    // Get preference status
+    const preferenceDoc = await SubmittedPreference.findOne({
+      facultyUsername: { $regex: `^${cleanUsername}$`, $options: "i" },
+      final: true
+    });
+
+    const hasSubmittedPreferences = !!preferenceDoc;
+    const preferenceCount = hasSubmittedPreferences ?
+      ((preferenceDoc.theoryPreferences?.length || 0) + (preferenceDoc.labPreferences?.length || 0)) : 0;
+
+    res.json({
+      success: true,
+      faculty: {
+        id: faculty._id,
+        name: faculty.name,
+        username: faculty.username,
+        email: faculty.email,
+        department: faculty.department,
+        role: faculty.role,
+        designation: faculty.role,
+        experience: faculty.experience,
+        approved: faculty.approved,
+        createdAt: faculty.createdAt,
+        timePreferences: faculty.timePreferences || [],
+        canTakeBackToBack: faculty.canTakeBackToBack || false,
+        preferenceStatus: faculty.preferenceStatus || "pending"
+      },
+      stats: {
+        allocationCount: allocationCount,
+        unreadMessages: unreadMessages,
+        hasSubmittedPreferences: hasSubmittedPreferences,
+        preferenceCount: preferenceCount,
+        totalMessages: faculty.messages ? faculty.messages.length : 0
+      },
+      lastLogin: faculty.lastLogin || null
+    });
+
+  } catch (err) {
+    console.error("❌ Error fetching faculty info:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching faculty information",
+      error: err.message
+    });
+  }
+});
+
+/* ================= FACULTY ALLOCATIONS ================= */
+// Get faculty allocations
+app.get("/faculty/allocations", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: "Username required"
+      });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+    console.log(`📊 Fetching allocations for username: ${cleanUsername}`);
+
+    // Find faculty first to get their details
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${cleanUsername}$`, $options: "i" }
+    });
+
+    if (!faculty) {
+      console.log(`❌ Faculty not found for username: ${cleanUsername}`);
+      return res.status(404).json({
+        success: false,
+        message: "Faculty not found",
+        allocations: []
+      });
+    }
+
+    console.log(`✅ Found faculty: ${faculty.name} (ID: ${faculty._id})`);
+
+    // Find allocations for this faculty - try multiple matching strategies
+    const allocations = await FacultyAllocation.find({
+      $or: [
+        { facultyUsername: { $regex: `^${cleanUsername}$`, $options: "i" } },
+        { facultyId: faculty._id },
+        { facultyName: { $regex: `^${faculty.name}$`, $options: "i" } }
+      ]
+    }).sort({ subjectCode: 1 });
+
+    console.log(`✅ Found ${allocations.length} allocations for ${faculty.name}`);
+
+    // If no allocations found, also check the raw collection
+    if (allocations.length === 0) {
+      const allAllocs = await FacultyAllocation.find({}).limit(5);
+      console.log("Sample of all allocations in DB:", allAllocs.map(a => ({
+        facultyUsername: a.facultyUsername,
+        facultyName: a.facultyName,
+        subjectCode: a.subjectCode
+      })));
+    }
+
+    // Get subject details for each allocation
+    const allocationsWithDetails = await Promise.all(
+      allocations.map(async (alloc) => {
+        const subject = await Subject.findOne({
+          code: { $regex: `^${alloc.subjectCode}$`, $options: "i" }
+        });
+
+        return {
+          subjectCode: alloc.subjectCode,
+          subjectName: subject?.name || alloc.subjectName || alloc.subjectCode,
+          subjectType: (alloc.subjectType || "THEORY").toUpperCase(),
+          weeklyHours: alloc.weeklyHours || 0,
+          semester: subject?.semester || alloc.semester || "N/A",
+          credit: subject?.credit || 0,
+          allocationDate: alloc.allocatedAt || alloc.createdAt || new Date()
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      allocations: allocationsWithDetails
+    });
+
+  } catch (err) {
+    console.error("❌ Get faculty allocations error:", err);
+    res.status(500).json({
+      success: false,
+      allocations: [],
+      message: "Server error fetching allocations"
+    });
+  }
+});
+
+/* ================= DEBUG ALLOCATIONS ================= */
+app.get("/admin/debug-allocations", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    const allocations = await FacultyAllocation.find({});
+
+    const summary = {
+      totalAllocations: allocations.length,
+      byFaculty: {},
+      sample: allocations.slice(0, 5).map(a => ({
+        facultyUsername: a.facultyUsername,
+        facultyName: a.facultyName,
+        subjectCode: a.subjectCode,
+        subjectName: a.subjectName
+      }))
+    };
+
+    allocations.forEach(a => {
+      const key = a.facultyUsername || 'unknown';
+      if (!summary.byFaculty[key]) {
+        summary.byFaculty[key] = 0;
+      }
+      summary.byFaculty[key]++;
+    });
+
+    res.json({
+      success: true,
+      summary: summary
+    });
+  } catch (err) {
+    console.error("Debug allocations error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get allocation status
+app.get("/faculty/allocations/status", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: "Username required"
+      });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+
+    const allocationCount = await FacultyAllocation.countDocuments({
+      facultyUsername: { $regex: `^${cleanUsername}$`, $options: "i" }
+    });
+
+    res.json({
+      success: true,
+      allocated: allocationCount > 0,
+      count: allocationCount
+    });
+
+  } catch (err) {
+    console.error("Check allocation status error:", err);
+    res.status(500).json({
+      success: false,
+      allocated: false,
+      count: 0
+    });
+  }
+});
+
+/* ================= ADMIN SESSION VALIDATION ================= */
+app.get("/admin/validate-session", async (req, res) => {
+  try {
+    const username = req.headers['x-username'];
+    const role = req.headers['x-role'];
+
+    if (!username || role !== 'admin') {
+      return res.status(401).json({ valid: false });
+    }
+
+    const admin = await Admin.findOne({
+      username: { $regex: `^${username}$`, $options: "i" }
+    });
+
+    if (!admin) {
+      return res.status(401).json({ valid: false });
+    }
+
+    res.json({
+      valid: true,
+      user: {
+        username: admin.username,
+        role: 'admin'
+      }
+    });
+  } catch (err) {
+    console.error("Admin session validation error:", err);
+    res.status(500).json({ valid: false });
+  }
+});
+
+/* ================= FACULTY SESSION VALIDATION ================= */
+app.get("/faculty/validate-session", async (req, res) => {
+  try {
+    const username = req.headers['x-username'];
+    const role = req.headers['x-role'];
+
+    if (!username || role !== 'faculty') {
+      return res.status(401).json({ valid: false });
+    }
+
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${username}$`, $options: "i" },
+      approved: true
+    });
+
+    if (!faculty) {
+      return res.status(401).json({ valid: false });
+    }
+
+    res.json({
+      valid: true,
+      user: {
+        username: faculty.username,
+        name: faculty.name,
+        facultyId: faculty._id,
+        designation: faculty.role,
+        role: 'faculty'
+      }
+    });
+  } catch (err) {
+    console.error("Faculty session validation error:", err);
+    res.status(500).json({ valid: false });
+  }
+});
+
+/* ================= FACULTY – FETCH OWN ABSENCES ================= */
+app.get("/faculty/absences", async (req, res) => {
+  try {
+    const username = req.headers['x-username'];
+    const role = req.headers['x-role'];
+
+    if (!username || role !== 'faculty') {
+      return res.status(401).json({ success: false, absences: [], message: "Unauthorized" });
+    }
+
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${String(username).trim()}$`, $options: "i" },
+      approved: true
+    }).select("_id name email username").lean();
+
+    if (!faculty) {
+      return res.status(401).json({ success: false, absences: [], message: "Unauthorized" });
+    }
+
+    const absences = await Absence.find({ facultyId: faculty._id })
+      .sort({ date: -1 })
+      .lean();
+
+    console.log("Fetched Absences:", absences.length);
+    return res.json({ success: true, absences });
+  } catch (err) {
+    console.error("Faculty fetch absences error:", err);
+    return res.status(500).json({ success: false, absences: [], message: "Server error" });
+  }
+});
+
+/* ================= STUDENT SESSION VALIDATION ================= */
+app.get("/student/validate-session", async (req, res) => {
+  try {
+    const username = req.headers['x-username'];
+    const role = req.headers['x-role'];
+
+    if (!username || role !== 'student') {
+      return res.status(401).json({ valid: false });
+    }
+
+    const student = await Student.findOne({
+      email: username.toLowerCase()
+    });
+
+    if (!student) {
+      return res.status(401).json({ valid: false });
+    }
+
+    res.json({
+      valid: true,
+      user: {
+        email: student.email,
+        name: student.name,
+        regNo: student.regNo,
+        role: 'student'
+      }
+    });
+  } catch (err) {
+    console.error("Student session validation error:", err);
+    res.status(500).json({ valid: false });
+  }
+});
+
+/* ================= GET SESSION INFO ================= */
+app.get("/api/session-info", async (req, res) => {
+  try {
+    const username = req.headers['x-username'];
+    const role = req.headers['x-role'];
+
+    if (!username || !role) {
+      return res.status(401).json({ error: "No session" });
+    }
+
+    let userData = null;
+
+    if (role === 'admin') {
+      userData = await Admin.findOne({
+        username: { $regex: `^${username}$`, $options: "i" }
+      }).select('-password');
+    } else if (role === 'faculty') {
+      userData = await Faculty.findOne({
+        username: { $regex: `^${username}$`, $options: "i" }
+      }).select('-password -resetToken -resetTokenExpiry');
+    } else if (role === 'student') {
+      userData = await Student.findOne({
+        email: username.toLowerCase()
+      }).select('-password -loginToken -loginTokenExpiry');
+    }
+
+    res.json({
+      valid: !!userData,
+      user: userData,
+      role: role,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.error("Session info error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/* ================== GET WORKLOAD CONFIGURATION (Mongoose version) ================== */
+app.get("/admin/get-workload-config", async (req, res) => {
+  try {
+    console.log("📡 Fetching workload configurations from database...");
+
+    const workloadConfigs = await WorkloadConfig.find({});
+
+    console.log(`✅ Found ${workloadConfigs.length} workload configurations`);
+
+    if (workloadConfigs.length === 0) {
+      return res.json({
+        success: true,
+        config: {}
+      });
+    }
+
+    // Convert to object format with designation as key
+    const configObject = {};
+    workloadConfigs.forEach(config => {
+      configObject[config.designation] = {
+        weeklyHours: config.weeklyHours || 0,
+        minTheory: config.minTheory || 0,
+        minLab: config.minLab || 0
+      };
+    });
+
+    console.log("📦 Sending config object:", configObject);
+
+    res.json({
+      success: true,
+      config: configObject
+    });
+
+  } catch (err) {
+    console.error("❌ Error fetching workload config:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching workload configuration"
+    });
+  }
+});
+
+/* ================== GET SINGLE SUBJECT BY CODE ================== */
+app.get("/api/subject/:code", async (req, res) => {
+  try {
+    const { code } = req.params;
+
+    // Find subject by code (case-insensitive)
+    const subject = await Subject.findOne({
+      code: { $regex: new RegExp(`^${code}$`, 'i') }
+    });
+
+    if (!subject) {
+      return res.status(404).json({
+        success: false,
+        message: "Subject not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      code: subject.code,
+      name: subject.name,
+      abbreviation: subject.abbreviation,
+      semester: subject.semester,
+      credit: subject.credit,
+      weeklyHours: subject.weeklyHours,
+      type: subject.type
+    });
+
+  } catch (err) {
+    console.error("Error fetching subject:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+/* ================== GET MULTIPLE SUBJECTS BY CODES (BATCH) ================== */
+app.post("/api/subjects/batch", async (req, res) => {
+  try {
+    const { codes } = req.body;
+
+    if (!codes || !Array.isArray(codes) || codes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide an array of subject codes"
+      });
+    }
+
+    // Find all subjects with codes in the provided array (case-insensitive)
+    const subjects = await Subject.find({
+      code: { $in: codes.map(code => new RegExp(`^${code}$`, 'i')) }
+    });
+
+    // Format response
+    const result = subjects.map(subject => ({
+      code: subject.code,
+      name: subject.name,
+      abbreviation: subject.abbreviation,
+      semester: subject.semester,
+      credit: subject.credit,
+      weeklyHours: subject.weeklyHours,
+      type: subject.type
+    }));
+
+    res.json(result);
+
+  } catch (err) {
+    console.error("Error fetching subjects batch:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+/* ================= SAVE EDITED ALLOCATIONS ================= */
+app.post("/admin/save-edited-allocations", async (req, res) => {
+  try {
+    let { allocations, changes, academicYear, term, semester } = req.body;
+
+    const currentYear = new Date().getFullYear();
+    const defaultAcademicYear = `${currentYear}-${currentYear + 1}`;
+
+    academicYear = academicYear ? academicYear.replace(/\s+/g, '') : defaultAcademicYear;
+    term = term ? term.trim() : "Odd";
+
+    if (!allocations || !Array.isArray(allocations)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid allocation data"
+      });
+    }
+
+    console.log(`📝 Saving ${allocations.length} edited allocations with ${changes?.length || 0} changes`);
+
+    const theoryCountSetting = await Settings.findOne({ key: "theoryFacultyCount" });
+    const labCountSetting = await Settings.findOne({ key: "labFacultyCount" });
+    const projectCountSetting = await Settings.findOne({ key: "projectFacultyCount" });
+    const globalFacultyCounts = {
+      theory: Number(theoryCountSetting?.value) || 1,
+      lab: Number(labCountSetting?.value) || 2,
+      project: Number(projectCountSetting?.value) || 3
+    };
+    const requiredFacultyForType = (type) => {
+      const t = (type || "").toLowerCase();
+      if (t === "project") return globalFacultyCounts.project;
+      if (t === "lab") return globalFacultyCounts.lab;
+      return globalFacultyCounts.theory;
+    };
+
+    // Prepare new allocation records (validate before deleting DB rows)
+    const allocationRecords = [];
+
+    // Group allocations by faculty to get faculty details
+    const facultyMap = {};
+    for (const alloc of allocations) {
+      if (!facultyMap[alloc.facultyName]) {
+        // Find faculty by name
+        const faculty = await Faculty.findOne({
+          name: { $regex: new RegExp(`^${alloc.facultyName}$`, 'i') }
+        }).lean();
+
+        if (faculty) {
+          facultyMap[alloc.facultyName] = faculty;
+        }
+      }
+    }
+
+    // Create allocation records
+    for (const alloc of allocations) {
+      const faculty = facultyMap[alloc.facultyName];
+      if (!faculty) {
+        console.warn(`Faculty not found for: ${alloc.facultyName}`);
+        continue;
+      }
+
+      // Get subject details
+      const subject = await Subject.findOne({
+        code: { $regex: new RegExp(`^${alloc.subjectCode}$`, 'i') }
+      }).lean();
+
+      // STRICT VALIDATION: Only use subjects found in the database
+      if (!subject) {
+        console.error(`❌ [SAVE-EDIT] Subject ${alloc.subjectCode} NOT found in database. Skipping.`);
+        continue;
+      }
+
+      console.log(`✅ [SAVE-EDIT] Verified subject ${subject.code} exists in DB`);
+
+      allocationRecords.push({
+        facultyId: faculty._id,
+        facultyUsername: faculty.username.toLowerCase(), // Store in lowercase
+        facultyName: faculty.name,
+        facultyDesignation: normalizeDesignation(faculty.role),
+        facultyExperience: faculty.experience || 0,
+        department: faculty.department,
+
+        subjectId: subject._id,
+        subjectCode: subject.code,
+        subjectName: subject.name,
+        subjectType: (alloc.subjectType || "THEORY").toUpperCase(),
+        subjectAbbreviation: subject.abbreviation || subject.code,
+
+        weeklyHours: alloc.weeklyHours || 0,
+        semester: subject?.semester || semester || 1,
+        priority: 1,
+
+        academicYear: academicYear,
+        term: term,
+
+        allocationType: "Manual Edit",
+        allocationStrategy: "Manual",
+        weekNumber: 1,
+        isActive: true,
+        parallelGroupId: subject?.parallelGroupId || "",
+        allocatedAt: new Date()
+      });
+    }
+
+    const countBySubjectCode = {};
+    allocationRecords.forEach(r => {
+      countBySubjectCode[r.subjectCode] = (countBySubjectCode[r.subjectCode] || 0) + 1;
+    });
+
+    const quotaMismatches = [];
+    for (const code of Object.keys(countBySubjectCode)) {
+      const subjectDoc = await Subject.findOne({
+        code: { $regex: new RegExp(`^${code}$`, "i") }
+      }).lean();
+      if (!subjectDoc) continue;
+      const required = requiredFacultyForType(subjectDoc.type);
+      const assigned = countBySubjectCode[code];
+      if (assigned !== required) {
+        quotaMismatches.push({
+          subjectCode: code,
+          subjectName: subjectDoc.name,
+          type: subjectDoc.type,
+          required,
+          assigned
+        });
+      }
+    }
+
+    if (quotaMismatches.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Each subject must have exactly the number of faculty set in Settings (theory / lab / project faculty counts).",
+        globalFacultyCounts,
+        quotaMismatches
+      });
+    }
+
+    console.log(`🗑️ [SAVE-EDIT] Clearing allocations for ${academicYear} / ${term}`);
+    await FacultyAllocation.deleteMany({ academicYear, term });
+
+    // Save new allocations
+    let savedCount = 0;
+    if (allocationRecords.length > 0) {
+      try {
+        await FacultyAllocation.insertMany(allocationRecords);
+        savedCount = allocationRecords.length;
+        console.log(`✅ Successfully saved ${savedCount} allocation records`);
+      } catch (saveError) {
+        console.error("❌ Error saving allocations:", saveError.message);
+        // Try to save individually
+        for (let i = 0; i < allocationRecords.length; i++) {
+          try {
+            await FacultyAllocation.create(allocationRecords[i]);
+            savedCount++;
+          } catch (err) {
+            console.error(`  ❌ Failed to save record ${i}:`, err.message);
+          }
+        }
+        console.log(`⚠️ Partially saved ${savedCount}/${allocationRecords.length} records`);
+      }
+    }
+
+    // Log the changes for debugging
+    if (changes && changes.length > 0) {
+      console.log("📋 Changes applied:");
+      changes.forEach((change, index) => {
+        if (change.type === "add") {
+          console.log(`  ${index + 1}. Added ${change.subject} to ${change.faculty} (${change.hours}h)`);
+        } else if (change.type === "remove") {
+          console.log(`  ${index + 1}. Removed ${change.subject} from ${change.faculty}`);
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully saved ${savedCount} allocations`,
+      savedCount: savedCount
+    });
+
+  } catch (err) {
+    console.error("❌ Save edited allocations error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error: " + err.message
+    });
+  }
+});
+
+/* ================= GET ALL ALLOCATIONS ================= */
+// app.get("/admin/get-allocations", async (req, res) => {
+//   try {
+//     const allocations = await FacultyAllocation.find({})
+//       .sort({ facultyName: 1, subjectCode: 1 })
+//       .lean();
+
+//     // Group by faculty
+//     const facultyMap = {};
+//     allocations.forEach(alloc => {
+//       if (!facultyMap[alloc.facultyName]) {
+//         facultyMap[alloc.facultyName] = {
+//           facultyName: alloc.facultyName,
+//           designation: alloc.facultyDesignation,
+//           experience: alloc.facultyExperience,
+//           seniorityRank: alloc.seniorityRank || 1,
+//           maxHours: alloc.maxHours || 16,
+//           usedHours: 0,
+//           theorySubjects: [],
+//           labSubjects: []
+//         };
+//       }
+
+//       const subjectStr = `${alloc.subjectCode} (${alloc.weeklyHours}h)`;
+//       if (alloc.subjectType?.toLowerCase() === "theory") {
+//         facultyMap[alloc.facultyName].theorySubjects.push(subjectStr);
+//       } else {
+//         facultyMap[alloc.facultyName].labSubjects.push(subjectStr);
+//       }
+//       facultyMap[alloc.facultyName].usedHours += alloc.weeklyHours || 0;
+//     });
+
+//     const facultyResults = Object.values(facultyMap);
+
+//     // Calculate status for each faculty
+//     facultyResults.forEach(f => {
+//       if (f.usedHours > f.maxHours) {
+//         f.status = "Overloaded";
+//       } else if (f.usedHours === f.maxHours) {
+//         f.status = "Full";
+//       } else {
+//         f.status = "Underloaded";
+//       }
+//     });
+
+//     res.json({
+//       success: true,
+//       facultyResults: facultyResults,
+//       summary: {
+//         totalFaculties: facultyResults.length,
+//         totalAllocations: allocations.length
+//       }
+//     });
+
+//   } catch (err) {
+//     console.error("❌ Get allocations error:", err);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching allocations"
+//     });
+//   }
+// });
+
+/* ================= GET ALLOCATIONS ================= */
+app.get("/admin/get-allocations", async (req, res) => {
+  try {
+    console.log("📡 Fetching all allocations from database...");
+
+    // Get all allocations
+    const allocations = await FacultyAllocation.find({}).lean();
+
+    // Get all faculties who submitted preferences
+    const submittedPreferences = await SubmittedPreference.find({ final: true }).lean();
+    const submittedUsernames = new Set(
+      submittedPreferences.map(pref => pref.facultyUsername.trim().toLowerCase())
+    );
+
+    // Get workload config
+    const workloads = await WorkloadConfig.find({}).lean();
+    const workloadMap = {};
+    workloads.forEach(w => {
+      workloadMap[w.designation] = {
+        maxHours: w.weeklyHours,
+        minTheory: w.minTheory,
+        minLab: w.minLab
+      };
+    });
+
+    // Get all approved faculties who submitted preferences
+    const faculties = await Faculty.find({
+      approved: true,
+      username: { $in: Array.from(submittedUsernames) }
+    }).lean();
+
+    // Group allocations by faculty
+    const facultyMap = {};
+
+    faculties.forEach(faculty => {
+      const username = faculty.username.toLowerCase();
+      const workload = workloadMap[faculty.role] || { maxHours: 16, minTheory: 2, minLab: 1 };
+
+      facultyMap[username] = {
+        faculty: faculty.name,
+        designation: faculty.role,
+        experience: faculty.experience,
+        seniorityRank: 1, // Will be calculated in the main allocation
+        maxHours: workload.maxHours,
+        usedHours: 0,
+        theorySubjects: [],
+        labSubjects: [],
+        theoryCount: 0,
+        labCount: 0,
+        minTheory: workload.minTheory,
+        minLab: workload.minLab
+      };
+    });
+
+    // Add allocations to faculty map
+    allocations.forEach(alloc => {
+      const username = alloc.facultyUsername?.toLowerCase();
+      if (username && facultyMap[username]) {
+        const f = facultyMap[username];
+        const subjectStr = `${alloc.subjectCode} (${alloc.weeklyHours}h)`;
+
+        if (alloc.subjectType?.toLowerCase() === "theory") {
+          f.theorySubjects.push(subjectStr);
+          f.theoryCount++;
+        } else {
+          f.labSubjects.push(subjectStr);
+          f.labCount++;
+        }
+
+        f.usedHours += alloc.weeklyHours || 0;
+      }
+    });
+
+    // Calculate seniority ranks
+    const facultyList = Object.values(facultyMap);
+
+    // Sort by designation and experience to assign seniority ranks
+    const designationPriority = {
+      "Professor": 1,
+      "Associate Professor": 2,
+      "Assistant Professor": 3
+    };
+
+    facultyList.sort((a, b) => {
+      const priorityA = designationPriority[a.designation] || 99;
+      const priorityB = designationPriority[b.designation] || 99;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      return (b.experience || 0) - (a.experience || 0);
+    });
+
+    // Assign seniority ranks
+    facultyList.forEach((f, index) => {
+      f.seniorityRank = index + 1;
+    });
+
+    // Calculate unallocated subjects
+    const allSubjects = await Subject.find({}).lean();
+    const allocatedSubjectCodes = new Set(allocations.map(a => a.subjectCode));
+    const unallocatedSubjects = allSubjects.filter(s => !allocatedSubjectCodes.has(s.code));
+
+    res.json({
+      success: true,
+      facultyResults: facultyList,
+      summary: {
+        totalFaculties: facultyList.length,
+        totalSubjects: allSubjects.length,
+        allocatedSubjects: allocations.length,
+        unallocatedSubjects: unallocatedSubjects.length,
+        totalAllocations: allocations.length
+      },
+      unallocatedSubjects: unallocatedSubjects.map(s => ({
+        code: s.code,
+        name: s.name,
+        type: s.type,
+        weeklyHours: s.weeklyHours || s.hours || 0,
+        semester: s.semester,
+        credit: s.credit
+      }))
+    });
+
+  } catch (err) {
+    console.error("❌ Error fetching allocations:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching allocations",
+      error: err.message
+    });
+  }
+});
+
+/* ================= SAVE WORKLOAD CONFIG ================= */
+app.post("/admin/save-workload-config", async (req, res) => {
+  try {
+    const { config } = req.body;
+
+    for (const designation in config) {
+      await WorkloadConfig.findOneAndUpdate(
+        { designation },
+        {
+          designation,
+          weeklyHours: config[designation].weeklyHours,
+          minTheory: config[designation].minTheory,
+          minLab: config[designation].minLab
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    res.json({ success: true, message: "Workload configuration saved" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// ================= GET SCHEMA CONSTRAINTS =================
+app.get("/api/schema-constraints", async (req, res) => {
+  try {
+    const { model } = req.query;
+
+    const constraints = {};
+
+    // FacultyAllocation schema constraints
+    if (!model || model === 'facultyallocation') {
+      // Get the schema paths from FacultyAllocation model
+      const schemaPaths = FacultyAllocation.schema.paths;
+
+      // Priority field constraints
+      if (schemaPaths.priority) {
+        constraints.priority = {
+          min: schemaPaths.priority.options.min || 1,
+          max: schemaPaths.priority.options.max || 25,
+          required: schemaPaths.priority.options.required || false
+        };
+      }
+
+      // Weekly hours constraints
+      if (schemaPaths.weeklyHours) {
+        constraints.weeklyHours = {
+          min: schemaPaths.weeklyHours.options.min || 0,
+          max: schemaPaths.weeklyHours.options.max || 12,
+          required: schemaPaths.weeklyHours.options.required || false
+        };
+      }
+    }
+
+    // Faculty schema constraints
+    if (!model || model === 'faculty') {
+      const facultySchema = Faculty.schema.paths;
+
+      if (facultySchema.experience) {
+        constraints.experience = {
+          min: facultySchema.experience.options.min || 0,
+          max: facultySchema.experience.options.max || 50
+        };
+      }
+    }
+
+    res.json({
+      success: true,
+      constraints
+    });
+
+  } catch (err) {
+    console.error("Error fetching schema constraints:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching schema constraints",
+      error: err.message
+    });
+  }
+});
+
+// ================= GET WORKLOAD CONFIG WITH CONSTRAINTS =================
+app.get("/admin/workload-config-with-constraints", async (req, res) => {
+  try {
+    // Get workload config
+    const workloads = await WorkloadConfig.find({}).lean();
+
+    // Get schema constraints
+    const schemaPaths = FacultyAllocation.schema.paths;
+    const priorityConstraints = {
+      min: schemaPaths.priority?.options.min || 1,
+      max: schemaPaths.priority?.options.max || 25
+    };
+
+    // Format workload config
+    const config = {};
+    workloads.forEach(w => {
+      config[w.designation] = {
+        weeklyHours: w.weeklyHours,
+        minTheory: w.minTheory,
+        minLab: w.minLab
+      };
+    });
+
+    res.json({
+      success: true,
+      config,
+      constraints: {
+        priority: priorityConstraints
+      }
+    });
+
+  } catch (err) {
+    console.error("Error fetching workload config with constraints:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching configuration"
+    });
+  }
+});
+
+/* ================= GET ALLOCATIONS FOR FACULTY DASHBOARD ================= */
+app.get("/faculty/my-allocations", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: "Username required"
+      });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+    console.log(`📊 Fetching allocations for faculty: ${cleanUsername}`);
+
+    // Find the faculty first
+    const faculty = await Faculty.findOne({
+      username: { $regex: `^${cleanUsername}$`, $options: "i" }
+    });
+
+    if (!faculty) {
+      return res.status(404).json({
+        success: false,
+        message: "Faculty not found"
+      });
+    }
+
+    // Get allocations from the database
+    const semesterType = req.query.semester; // 'odd' or 'even'
+
+    // Build faculty identity condition
+    const facultyCondition = {
+      $or: [
+        { facultyUsername: { $regex: `^${cleanUsername}$`, $options: "i" } },
+        { facultyId: faculty._id },
+        { facultyName: faculty.name }
+      ]
+    };
+
+    // Build semester condition
+    let semesterCondition = null;
+    if (semesterType === 'odd') {
+      semesterCondition = { semester: { $in: [1, 3, 5, 7] } };
+    } else if (semesterType === 'even') {
+      semesterCondition = { semester: { $in: [2, 4, 6, 8] } };
+    }
+
+    // Combine with $and for proper MongoDB evaluation
+    const query = semesterCondition
+      ? { $and: [facultyCondition, semesterCondition] }
+      : facultyCondition;
+
+    const allocations = await FacultyAllocation.find(query).sort({ subjectCode: 1 });
+
+    console.log(`✅ Found ${allocations.length} allocations for ${faculty.name} (Semester: ${semesterType || 'All'})`);
+
+    let totalHours = 0;
+    let theoryHours = 0;
+    let labProjectHours = 0;
+
+    // Format allocations for display
+    const formattedAllocations = allocations.map(alloc => {
+      const hours = alloc.weeklyHours || 0;
+      const type = (alloc.subjectType || "Theory").toLowerCase();
+
+      totalHours += hours;
+      if (type.includes("theory")) {
+        theoryHours += hours;
+      } else {
+        labProjectHours += hours;
+      }
+
+      return {
+        subjectCode: alloc.subjectCode,
+        subjectName: alloc.subjectName || alloc.subjectCode,
+        subjectType: (alloc.subjectType || "THEORY").toUpperCase(),
+        weeklyHours: hours,
+        semester: alloc.semester || "N/A",
+        credit: alloc.credit || 0,
+        allocationDate: alloc.allocationDate || alloc.createdAt || null,
+        priority: alloc.priority || 1
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        subjects: formattedAllocations,
+        totalHours,
+        theoryHours,
+        labProjectHours
+      }
+    });
+
+  } catch (err) {
+    console.error("❌ Error fetching faculty allocations:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching allocations",
+      allocations: []
+    });
+  }
+});
+
+/* ================= FACULTY PERSONAL TIMETABLE ================= */
+app.get("/faculty/my-timetable", async (req, res) => {
+  try {
+    const { username } = req.query;
+    if (!username) {
+      return res.status(400).json({ success: false, message: "Username required" });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+    const faculty = await Faculty.findOne({ username: { $regex: `^${cleanUsername}$`, $options: "i" } });
+
+    if (!faculty) {
+      return res.status(404).json({ success: false, message: "Faculty not found" });
+    }
+
+    // Get all timetables (including versions/drafts that were manually saved by admin)
+    // We sort by updatedAt to get the most recent version if there are multiple
+    const masterTimetables = await Timetable.find().sort("-updatedAt").lean();
+    console.log(`[my-timetable] Total Timetables in DB: ${masterTimetables.length}`);
+
+    const facultyTimetable = {};
+    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+    // Initialize day map
+    days.forEach(d => facultyTimetable[d] = {});
+
+    let matchCount = 0;
+    masterTimetables.forEach(tt => {
+      const semester = tt.semester;
+      const deptName = tt.name.split(' ')[0] || "Dept";
+
+      tt.slots.forEach(slot => {
+        const day = slot.day;
+        const time = slot.time;
+        if (!day || !time) return;
+
+        (slot.entries || []).forEach(entry => {
+          // Identify if this faculty is assigned to this entry
+          // Flexible matching: check facultyId OR facultyName
+          const fId = entry.facultyId?._id || entry.facultyId;
+
+          const isIdMatch = fId && fId.toString() === faculty._id.toString();
+          const isNameMatch = entry.facultyName &&
+            entry.facultyName.toLowerCase().trim() === faculty.name.toLowerCase().trim();
+
+          if (isIdMatch || isNameMatch) {
+            matchCount++;
+            console.log(`[my-timetable] MATCH: ${day} at ${time} - ${entry.subjectName} (${tt.name})`);
+
+            if (!facultyTimetable[day][time]) {
+              facultyTimetable[day][time] = [];
+            }
+
+            // Avoid duplicate display if multiple versions exist for the same slot
+            const exists = facultyTimetable[day][time].some(e =>
+              e.subjectName === entry.subjectName &&
+              e.semester === `Semester ${semester}`
+            );
+
+            if (!exists) {
+              facultyTimetable[day][time].push({
+                subjectName: entry.subjectName,
+                subjectAbbreviation: entry.subjectAbbreviation,
+                semester: `Semester ${semester}`,
+                department: deptName,
+                room: slot.roomName || "N/A",
+                name: tt.name
+              });
+            }
+          }
+        });
+      });
+    });
+
+    console.log(`[my-timetable] Search complete for ${faculty.name}. Total matches: ${matchCount}`);
+
+    res.json({
+      success: true,
+      timetable: facultyTimetable
+    });
+
+  } catch (err) {
+    console.error("Faculty Timetable Error:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/* ================= TIMETABLE GENERATION & MANAGEMENT ================= */
+
+// Get allocations for manual placement (filtered by semester)
+app.get("/api/allocations", async (req, res) => {
+  try {
+    const { semester, academicYear, term } = req.query;
+    const query = { isActive: true };
+
+    if (academicYear) query.academicYear = academicYear.replace(/\s+/g, '');
+    if (term) query.term = term.trim();
+
+    if (semester && semester !== "ALL") {
+      const s = String(semester).trim();
+      if (s === "ODD") query.semester = { $in: [1, 3, 5, 7] };
+      else if (s === "EVEN") query.semester = { $in: [2, 4, 6, 8] };
+      else if (!isNaN(parseInt(semester, 10))) query.semester = parseInt(semester, 10);
+    }
+
+    const allocations = await FacultyAllocation.find(query)
+      .populate("facultyId", "name username role")
+      .populate("subjectId", "name code type semester weeklyHours parallelGroupId");
+
+    res.json({
+      success: true,
+      allocations
+    });
+  } catch (err) {
+    console.error("Error fetching allocations for TT:", err);
+    res.status(500).json({ success: false, message: "Error fetching allocations" });
+  }
+});
+
+/* ================= TIMETABLE DRAFT APIS ================= */
+
+// Create a new draft
+app.post("/api/timetable-drafts", async (req, res) => {
+  try {
+    const { draftName, days, periodsPerDay, slots } = req.body;
+
+    if (!draftName || !days || !periodsPerDay || !slots) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    const draft = new TimetableDraft({
+      draftName,
+      days,
+      periodsPerDay,
+      slots
+    });
+
+    await draft.save();
+    res.json({ success: true, draft });
+  } catch (err) {
+    console.error("Create draft error:", err);
+    res.status(500).json({ success: false, message: err.code === 11000 ? "Draft name must be unique" : "Server error" });
+  }
+});
+
+// Get all drafts
+app.get("/api/timetable-drafts", async (req, res) => {
+  try {
+    const drafts = await TimetableDraft.find({ isActive: true }).sort({ createdAt: -1 });
+    res.json({ success: true, drafts });
+  } catch (err) {
+    console.error("Get drafts error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Get specific draft
+app.get("/api/timetable-drafts/:id", async (req, res) => {
+  try {
+    const draft = await TimetableDraft.findById(req.params.id);
+    if (!draft) return res.status(404).json({ success: false, message: "Draft not found" });
+    res.json({ success: true, draft });
+  } catch (err) {
+    console.error("Get draft error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Update draft
+app.put("/api/timetable-drafts/:id", async (req, res) => {
+  try {
+    const { draftName, slots, days, periodsPerDay } = req.body;
+    const draft = await TimetableDraft.findByIdAndUpdate(req.params.id, {
+      draftName,
+      slots,
+      days,
+      periodsPerDay
+    }, { new: true });
+
+    if (!draft) return res.status(404).json({ success: false, message: "Draft not found" });
+    res.json({ success: true, draft });
+  } catch (err) {
+    console.error("Update draft error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Delete draft
+app.delete("/api/timetable-drafts/:id", async (req, res) => {
+  try {
+    const draft = await TimetableDraft.findByIdAndUpdate(req.params.id, { isActive: false });
+    if (!draft) return res.status(404).json({ success: false, message: "Draft not found" });
+    res.json({ success: true, message: "Draft deleted" });
+  } catch (err) {
+    console.error("Delete draft error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+app.post("/api/timetable/generate", async (req, res) => {
+  try {
+    let { academicYear, term, semester, lockedSlots = [], draftId } = req.body;
+
+    if (!academicYear || !term || !semester) {
+      return res.json({ success: false, message: "Missing academicYear, term, or semester." });
+    }
+
+    academicYear = academicYear.replace(/\s+/g, '');
+    term = term.trim();
+    // Support both "4" and "S4" formats
+    const targetSemester = typeof semester === 'string' ? parseInt(semester.replace(/\D/g, '')) : parseInt(semester);
+    console.log(`[generate] Target semester: ${targetSemester} (type: ${typeof targetSemester})`);
+
+    // 0. STRONG IDEMPOTENCY - Clean up existing drafts for this sem/year/term
+    console.log(`[generate] Cleaning up existing drafts for Sem ${targetSemester}, ${academicYear}, ${term}`);
+    await Timetable.deleteMany({
+      academicYear,
+      term,
+      semester: targetSemester,
+      isDraft: true
+    });
+
+    // 1. Fetch & Format Rules (Use Draft if provided)
+    let rawRules = {};
+    let manualEntries = [];
+
+    // Map term to semesterType as stored in ManualEntry
+    const semesterType = (term.toLowerCase() === "odd") ? "ODD" : "EVEN";
+    const semString = `S${targetSemester}`;
+
+    // ALWAYS Fetch manual entries for this academic context from the DB
+    console.log(`[generate] Fetching manual entries for Year:${academicYear}, Type:${semesterType}, Sem:${semString}`);
+    const dbManualEntries = await ManualEntry.find({
+      academicYear,
+      semesterType,
+      semester: semString
+    }).lean();
+    console.log(`[generate] Found ${dbManualEntries.length} database manual entries for ${semString}`);
+
+    if (draftId) {
+      const draft = await TimetableDraft.findById(draftId);
+      if (!draft) return res.json({ success: false, message: "Selected draft not found." });
+
+      // If we have a draft, we might have additional manual overrides 
+      // but the user requirement stresses fetching them for the context.
+      // We'll merge them, avoiding duplicates by subjectCode.
+      const entryMap = new Map();
+      dbManualEntries.forEach(e => entryMap.set(e.subjectCode, e));
+      
+      const draftEntries = draft.manualEntries || [];
+      draftEntries.forEach(de => {
+        if (!entryMap.has(de.subjectCode)) {
+          entryMap.set(de.subjectCode, de);
+        }
+      });
+      manualEntries = Array.from(entryMap.values());
+
+      // Convert draft slots to format used by generator for rules
+      draft.slots.forEach(slot => {
+        if (!rawRules[slot.day]) rawRules[slot.day] = [];
+        rawRules[slot.day].push({ start: slot.startTime, end: slot.endTime });
+      });
+    } else {
+      const timeline = await Timeline.findOne();
+      if (!timeline || !timeline.rules) {
+        return res.json({ success: false, message: "Timetable rules not configured." });
+      }
+      rawRules = timeline.rules instanceof Map ? Object.fromEntries(timeline.rules) : timeline.rules;
+      manualEntries = dbManualEntries;
+    }
+
+    const formatToAMPM = (time24) => {
+      if (typeof time24 !== 'string' || !time24.includes(':')) return time24;
+      const [hStr, mStr] = time24.split(':');
+      let h = parseInt(hStr);
+      const m = parseInt(mStr);
+
+      // Academic block fix: Ensure afternoon/evening times (e.g., 1:30) are PM if h is small but likely PM
+      // Standard academic hours: 8 AM to 8 PM (08:00 to 20:00)
+      // If h is 1-7, it's likely PM (13-19) unless explicitly coded.
+      // But we just follow standard 24h -> 12h conversion here for the display string.
+      const period = h >= 12 ? 'PM' : 'AM';
+      let displayH = h % 12 || 12;
+      return `${displayH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${period}`;
+    };
+
+    const timelineRules = {};
+    Object.keys(rawRules).forEach(day => {
+      timelineRules[day] = rawRules[day].map(slot =>
+        (typeof slot === 'object' && slot !== null && slot.start && slot.end)
+          ? `${formatToAMPM(slot.start)} - ${formatToAMPM(slot.end)}`
+          : slot
+      );
+    });
+
+    const daysOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const SLOT_CAPACITY = 3; // Max parallel subjects per slot
+    const MAX_DAILY_FACULTY_LOAD = 5; // Soft constraint
+
+    // 2. Data Structures for Constraints
+    const globalFacultyBusyMap = new Map(); // key: "facultyId_day_time", value: true
+    const facultyDailyLoadMap = new Map(); // key: "facultyId_day", value: count
+    const subjectDayMap = new Map(); // key: "subjectCode_day", value: count (for spread)
+    const timetable = []; // finalized slots
+    const gridSearchMap = {}; // day_time -> slot
+
+    // 3. Populate Global Busy Map from OTHER finalized semesters (HARD CONSTRAINT)
+    const otherTTs = await Timetable.find({ academicYear, term, isDraft: false }).lean();
+    otherTTs.forEach(tt => {
+      if (parseInt(tt.semester) !== targetSemester) {
+        tt.slots.forEach(s => {
+          const slotKey = `${s.day}_${s.time}`;
+          (s.entries || []).forEach(e => {
+            if (e.facultyId) {
+              const fId = (e.facultyId._id || e.facultyId).toString();
+              globalFacultyBusyMap.set(`${fId}_${slotKey}`, true);
+            }
+          });
+        });
+      }
+    });
+
+    // 4. Handle Manual Subjects (HIGHEST PRIORITY)
+    console.log(`[generate] Processing ${manualEntries.length} total manual subjects for Sem ${targetSemester}`);
+    for (const me of manualEntries) {
+      // STRICT SEMESTER CHECK: Ensure this entry belongs to the current target semester
+      if (me.semester && me.semester !== semString) {
+        console.log(`[generate] SKIP: Manual entry ${me.subjectName} has semester ${me.semester}, need ${semString}`);
+        continue;
+      }
+      if (!me.semester) {
+        console.log(`[generate] WARNING: Manual entry ${me.subjectName} has NO semester field. Injecting anyway.`);
+      }
+      
+      console.log(`[generate] Injecting manual subject: ${me.subjectName} (${me.semester || 'Draft-based'})`);
+      
+      // If preferredSlots exist (from DB ManualEntry model)
+      if (me.preferredSlots && Array.isArray(me.preferredSlots)) {
+        for (const ps of me.preferredSlots) {
+          const daySlots = timelineRules[ps.day] || [];
+          const time = daySlots[ps.period - 1]; // period is 1-indexed
+
+          if (!time) {
+            console.warn(`[generate] Manual slot out of bounds: ${ps.day} Period ${ps.period}`);
+            continue;
+          }
+
+          const key = `${ps.day}_${time}`;
+          if (!gridSearchMap[key]) {
+            gridSearchMap[key] = { day: ps.day, time: time, entries: [], semester: targetSemester, locked: true, isManual: true };
+            timetable.push(gridSearchMap[key]);
+          } else {
+            gridSearchMap[key].locked = true;
+            gridSearchMap[key].isManual = true;
+            gridSearchMap[key].semester = targetSemester;
+          }
+
+          const gid = me.parallelGroupId || `AutoGroup_${me.subjectCode}_${targetSemester}`;
+
+          gridSearchMap[key].entries.push({
+            subjectName: me.subjectName,
+            subjectCode: me.subjectCode,
+            facultyName: me.facultyName,
+            facultyId: me.facultyId,
+            subjectType: "MANUAL",
+            parallelGroupId: gid,
+            isManual: true
+          });
+
+          if (me.facultyId) {
+            const fId = me.facultyId.toString();
+            globalFacultyBusyMap.set(`${fId}_${key}`, true);
+            facultyDailyLoadMap.set(`${fId}_${ps.day}`, (facultyDailyLoadMap.get(`${fId}_${ps.day}`) || 0) + 1);
+            // Track subject day usage for manual entries too
+            subjectDayMap.set(`${me.subjectCode}_${ps.day}`, (subjectDayMap.get(`${me.subjectCode}_${ps.day}`) || 0) + 1);
+          }
+        }
+      } 
+      // Handle slots from draft/old format if they exist
+      else if (me.slots && me.slots.length > 0) {
+        for (const ms of me.slots) {
+          const key = `${ms.day}_${ms.time}`;
+          if (!gridSearchMap[key]) {
+            gridSearchMap[key] = { day: ms.day, time: ms.time, entries: [], semester: targetSemester, locked: true, isManual: true };
+            timetable.push(gridSearchMap[key]);
+          } else {
+            gridSearchMap[key].locked = true;
+            gridSearchMap[key].isManual = true;
+            gridSearchMap[key].semester = targetSemester;
+          }
+          const gid = me.parallelGroupId || `AutoGroup_${me.subjectCode}_${targetSemester}`;
+
+          gridSearchMap[key].entries.push({
+            subjectName: me.subjectName,
+            subjectCode: me.subjectCode,
+            facultyName: me.facultyName,
+            facultyId: me.facultyId,
+            subjectType: "MANUAL",
+            parallelGroupId: gid,
+            isManual: true
+          });
+          if (me.facultyId) {
+            const fId = me.facultyId.toString();
+            globalFacultyBusyMap.set(`${fId}_${key}`, true);
+            facultyDailyLoadMap.set(`${fId}_${ms.day}`, (facultyDailyLoadMap.get(`${fId}_${ms.day}`) || 0) + 1);
+            // Track subject day usage for manual entries too
+            subjectDayMap.set(`${me.subjectCode}_${ms.day}`, (subjectDayMap.get(`${me.subjectCode}_${ms.day}`) || 0) + 1);
+          }
+        }
+      }
+    }
+
+    // 4.5. Handle Locked Slots from request
+    lockedSlots.forEach(s => {
+      // Filter by semester if the slot has it (added in admin.html per current requirement)
+      if (s.semester) {
+        const sSem = parseInt(s.semester);
+        if (sSem !== targetSemester) {
+          console.log(`[generate] SKIP lockedSlot: Day:${s.day} Time:${s.time} has semester ${sSem}, need ${targetSemester}`);
+          return;
+        }
+      } else {
+        console.log(`[generate] SKIP lockedSlot: Day:${s.day} Time:${s.time} has NO semester field. (Strict filter enabled)`);
+        return; // Skip untagged slots to prevent leakage
+      }
+
+      const key = `${s.day}_${s.time}`;
+      if (!gridSearchMap[key]) {
+        gridSearchMap[key] = { ...s, semester: targetSemester, locked: true };
+        timetable.push(gridSearchMap[key]);
+      } else {
+        gridSearchMap[key].locked = true; // ensure it's locked if merged
+        gridSearchMap[key].semester = targetSemester;
+      }
+      (s.entries || []).forEach(e => {
+        if (e.facultyId) {
+          const fId = (e.facultyId._id || e.facultyId).toString();
+          globalFacultyBusyMap.set(`${fId}_${key}`, true);
+          facultyDailyLoadMap.set(`${fId}_${s.day}`, (facultyDailyLoadMap.get(`${fId}_${s.day}`) || 0) + 1);
+        }
+      });
+    });
+
+    // 5. Fetch Allocations
+    const allocations = await FacultyAllocation.find({
+      academicYear,
+      term,
+      semester: targetSemester,
+      isActive: true
+    }).populate("facultyId").populate("subjectId");
+
+    console.log("[generate] Found allocations:", allocations.length);
+    // 6. Group Allocations Atomically (parallelGroupId)
+    const groupsMap = {};
+    allocations.forEach(a => {
+      // FIX: Auto-group Project and Lab subjects by subjectCode if no parallelGroupId is provided.
+      // This prevents multi-faculty projects from consuming separate slots and clogging the timetable.
+      let gid = (a.parallelGroupId && a.parallelGroupId.trim());
+      const isLabOrProject = a.subjectType === "Lab" || a.subjectType === "Project";
+
+      if (!gid && isLabOrProject) {
+        gid = `AutoGroup_${a.subjectCode}_${a.semester}`;
+      } else if (!gid) {
+        gid = `single_${a._id}`;
+      }
+
+      // Update the internal allocation object so canPlaceAtomic and placeAtomic use the correct gid
+      a.parallelGroupId = gid;
+
+      if (!groupsMap[gid]) {
+        groupsMap[gid] = {
+          groupId: gid,
+          subjects: [],
+          weeklyHours: a.weeklyHours || 0,
+          isLab: isLabOrProject,
+          remainingHours: a.weeklyHours || 0
+        };
+      }
+      // Check if some hours were already placed manually/locked
+      let manualHours = 0;
+      timetable.forEach(ts => {
+        if (ts.entries.some(e => e.subjectCode === a.subjectCode || e.subjectName === a.subjectName)) {
+          manualHours++;
+        }
+      });
+      groupsMap[gid].remainingHours = Math.max(0, groupsMap[gid].weeklyHours - manualHours);
+      groupsMap[gid].subjects.push(a);
+    });
+
+    // Sort: Labs first, then high hours
+    const groupList = Object.values(groupsMap).sort((a, b) => {
+      if (a.isLab !== b.isLab) return a.isLab ? -1 : 1;
+      return b.remainingHours - a.remainingHours;
+    });
+
+    console.log("[generate] Grouped allocations into", groupList.length, "groups");
+
+    // 7. ALLOCATION CORE LOGIC
+    const audit = { totalAllocated: 0, retries: 0, skipped: [] };
+
+    const canPlaceAtomic = (group, day, time, softConstraints = true) => {
+      const slotKey = `${day}_${time}`;
+      const slot = gridSearchMap[slotKey];
+      if (slot && slot.entries.length >= SLOT_CAPACITY) return { ok: false, reason: "Slot full" };
+
+      // HARD: Parallel vs Non-Parallel Separation (CRITICAL)
+      const currentEntries = slot ? slot.entries : [];
+      const hasParallelEntry = currentEntries.some(e => e.parallelGroupId);
+      const isGroupParallel = !!group.subjects[0].parallelGroupId;
+
+      // 1. If slot has parallel group, only same group can enter
+      if (hasParallelEntry) {
+        if (!isGroupParallel) {
+          console.log("Rejected mix parallel/non-parallel: Slot reserved for parallel group");
+          return { ok: false, reason: "Slot reserved for parallel group" };
+        }
+        const existingGid = currentEntries[0].parallelGroupId;
+        if (existingGid !== group.subjects[0].parallelGroupId) {
+          console.log("Rejected mix parallel/non-parallel: Mismatched parallel groups");
+          return { ok: false, reason: "Mismatched parallel groups" };
+        }
+      }
+
+      // 2. If slot has non-parallel entries, it is OWNED by them (exclusive in same semester)
+      if (!hasParallelEntry && currentEntries.length > 0) {
+        if (isGroupParallel) {
+          console.log("Rejected mix parallel/non-parallel: Slot already has non-parallel entries");
+          return { ok: false, reason: "Parallel group cannot mix with non-parallel" };
+        } else {
+          // Both non-parallel -> For same semester, this is a conflict!
+          console.log("Rejected mix non-parallel/non-parallel: Single semester slot must be unique");
+          return { ok: false, reason: "Slot already occupied by another subject" };
+        }
+      }
+
+      // HARD: Faculty Overlap
+      for (const sub of group.subjects) {
+        const fId = (sub.facultyId?._id || sub.facultyId)?.toString();
+        if (!fId) continue;
+        if (globalFacultyBusyMap.has(`${fId}_${slotKey}`)) {
+          return { ok: false, reason: `Faculty ${sub.facultyName} busy` };
+        }
+        if (slot && slot.entries.some(e => e.subjectCode === sub.subjectCode)) return { ok: false, reason: `Subject already in slot` };
+      }
+
+      // HARD: Lab Day Limit (Max 3 hours per subject per day)
+      if (group.isLab) {
+        const checkedCodes = new Set();
+        for (const sub of group.subjects) {
+          const sCode = sub.subjectCode || sub.subjectId.code;
+          if (checkedCodes.has(sCode)) continue;
+          checkedCodes.add(sCode);
+          
+          const current = subjectDayMap.get(`${sCode}_${day}`) || 0;
+          if (current >= 3) {
+            return { ok: false, reason: "Lab day limit reached (Hard)" };
+          }
+        }
+      }
+
+      if (softConstraints) {
+        // SOFT: Faculty Daily Load
+        for (const sub of group.subjects) {
+          const fId = (sub.facultyId._id || sub.facultyId).toString();
+          if ((facultyDailyLoadMap.get(`${fId}_${day}`) || 0) >= MAX_DAILY_FACULTY_LOAD) return { ok: false, reason: "Faculty daily limit reached", soft: true };
+        }
+
+        // SOFT: Theory Subject Spread (no more than 2 slots per day)
+        if (!group.isLab) {
+          const checkedCodes = new Set();
+          for (const sub of group.subjects) {
+            const sCode = sub.subjectCode || sub.subjectId.code;
+            if (checkedCodes.has(sCode)) continue;
+            checkedCodes.add(sCode);
+
+            const current = subjectDayMap.get(`${sCode}_${day}`) || 0;
+            if (current >= 2) {
+              console.log(`[canPlaceAtomic] REJECT ${sCode} on ${day}: current ${current} >= limit 2`);
+              return { ok: false, reason: "Theory subject day limit reached", soft: true };
+            }
+          }
+        }
+
+        // HARD: Lab Contiguity Limit (Max 3 continuous periods)
+        if (group.isLab) {
+          const daySlots = timelineRules[day] || [];
+          const timeIdx = daySlots.indexOf(time);
+          if (timeIdx !== -1) {
+            let continuousCount = 1;
+
+            // Check previous slots
+            for (let i = timeIdx - 1; i >= 0; i--) {
+              // Stop if crossing session boundary (every 3 periods)
+              if (Math.floor(i / 3) !== Math.floor(timeIdx / 3)) break;
+
+              const prevKey = `${day}_${daySlots[i]}`;
+              const prevSlot = gridSearchMap[prevKey];
+              if (prevSlot && prevSlot.entries.some(e => e.parallelGroupId === group.groupId || (e.subjectCode === group.subjects[0].subjectCode))) {
+                continuousCount++;
+              } else {
+                break;
+              }
+            }
+
+            // Check next slots
+            for (let i = timeIdx + 1; i < daySlots.length; i++) {
+              // Stop if crossing session boundary (every 3 periods)
+              if (Math.floor(i / 3) !== Math.floor(timeIdx / 3)) break;
+
+              const nextKey = `${day}_${daySlots[i]}`;
+              const nextSlot = gridSearchMap[nextKey];
+              if (nextSlot && nextSlot.entries.some(e => e.parallelGroupId === group.groupId || (e.subjectCode === group.subjects[0].subjectCode))) {
+                continuousCount++;
+              } else {
+                break;
+              }
+            }
+
+            if (continuousCount > 3) {
+              return { ok: false, reason: "Lab continuous block exceeds 3 periods", soft: false };
+            }
+          }
+        }
+      }
+
+      return { ok: true };
+    };
+
+    const placeAtomic = (group, day, time) => {
+      const slotKey = `${day}_${time}`;
+      if (!gridSearchMap[slotKey]) {
+        gridSearchMap[slotKey] = { day, time, entries: [], semester: targetSemester };
+        timetable.push(gridSearchMap[slotKey]);
+      }
+      group.subjects.forEach(sub => {
+        const facId = (sub.facultyId._id || sub.facultyId).toString();
+        const subId = (sub.subjectId._id || sub.subjectId).toString();
+        gridSearchMap[slotKey].entries.push({
+          subjectId: subId,
+          facultyId: facId,
+          subjectName: sub.subjectId.name,
+          subjectCode: sub.subjectId.code,
+          subjectAbbreviation: sub.subjectId.abbreviation || sub.subjectId.code,
+          facultyName: sub.facultyName,
+          subjectType: (sub.subjectId.type || "THEORY").toUpperCase(),
+          parallelGroupId: sub.parallelGroupId
+        });
+        globalFacultyBusyMap.set(`${facId}_${slotKey}`, true);
+        facultyDailyLoadMap.set(`${facId}_${day}`, (facultyDailyLoadMap.get(`${facId}_${day}`) || 0) + 1);
+      });
+      // Increment subject day occupancy ONLY ONCE per unique subject code per slot
+      const uniqueCodesInSlot = new Set(group.subjects.map(s => s.subjectCode || s.subjectId.code));
+      uniqueCodesInSlot.forEach(code => {
+        subjectDayMap.set(`${code}_${day}`, (subjectDayMap.get(`${code}_${day}`) || 0) + 1);
+      });
+      group.remainingHours--;
+      audit.totalAllocated++;
+    };
+
+    // PASS 1: Labs (3-Hour Block Allocation)
+    for (const group of groupList.filter(g => g.isLab)) {
+      console.log("Allocating lab block:", group.subjects[0].subjectName);
+      while (group.remainingHours >= 3) {
+        let placed = false;
+        const shuffledDays = [...daysOrder].sort(() => Math.random() - 0.5);
+
+        for (const day of shuffledDays) {
+          const daySlots = timelineRules[day] || [];
+          if (daySlots.length < 3) continue;
+
+          for (let i = 0; i <= daySlots.length - 3; i++) {
+            // Lab Session Constraint: Block must not cross the Noon break (every 3 periods)
+            if (Math.floor(i / 3) !== Math.floor((i + 2) / 3)) continue;
+
+            const block = daySlots.slice(i, i + 3);
+            const canFit = block.every(t => canPlaceAtomic(group, day, t, true).ok);
+
+            if (canFit) {
+              block.forEach(t => placeAtomic(group, day, t));
+              placed = true;
+              break;
+            }
+          }
+          if (placed) break;
+        }
+        if (!placed) {
+          // If 3-hour block fails, try smaller if applicable, or fail if it's a hard requirement
+          console.log(`Skipping block allocation for ${group.groupId}: No 3-hour window found.`);
+          break;
+        }
+      }
+    }
+
+    // PASS 2: Theory & Remaining Labs (Spread/Daily Load checks ON)
+    for (const group of groupList) {
+      while (group.remainingHours > 0) {
+        let placed = false;
+        const shuffledDays = [...daysOrder].sort(() => Math.random() - 0.5);
+        for (const day of shuffledDays) {
+          const daySlots = [...(timelineRules[day] || [])].sort(() => Math.random() - 0.5);
+          for (const time of daySlots) {
+            const res = canPlaceAtomic(group, day, time, true);
+            if (res.ok) {
+              placeAtomic(group, day, time);
+              placed = true;
+              if (group.subjects[0].parallelGroupId) {
+                console.log("Parallel group allocated:", group.subjects[0].parallelGroupId);
+              }
+              break;
+            }
+          }
+          if (placed) break;
+        }
+        if (!placed) break; // Move to Pass 3
+      }
+    }
+
+    // PASS 3: Last Resort (Soft constraints RELAXED)
+    for (const group of groupList) {
+      while (group.remainingHours > 0) {
+        let placed = false;
+        for (const day of daysOrder) {
+          const daySlots = timelineRules[day] || [];
+          for (const time of daySlots) {
+            const res = canPlaceAtomic(group, day, time, false); // No soft constraints
+            if (res.ok) {
+              placeAtomic(group, day, time);
+              placed = true;
+              console.log("Allocating (Relaxed):", group.groupId, "Remaining:", group.remainingHours);
+              break;
+            }
+          }
+          if (placed) break;
+        }
+        if (!placed) {
+          console.log(`Skipping slot due to conflict: No valid slot for ${group.groupId}`);
+          audit.skipped.push(group.groupId);
+          break;
+        }
+      }
+    }
+
+    // Post-Generation Audit
+    console.log("--- GENERATION INTEGRITY SNAPSHOT ---");
+    console.log("Total subjects allocated:", audit.totalAllocated);
+    console.log("Total slots used:", timetable.length);
+    console.log("Skipped/Failed:", audit.skipped.length > 0 ? audit.skipped.join(", ") : "None");
+
+    // Final check for Hard Constraints (Parallel mismatch)
+    const validationErrors = [];
+    groupList.forEach(g => {
+      if (g.remainingHours > 0) {
+        validationErrors.push(`${g.groupId}: Expected ${g.weeklyHours}h, missing ${g.remainingHours}h.`);
+      }
+    });
+
+    if (validationErrors.length > 0) {
+      return res.json({
+        success: false,
+        message: "HARD CONSTRAINT FAILURE: Could not allocate all hours.",
+        details: validationErrors,
+        slots: timetable
+      });
+    }
+
+    res.json({
+      success: true,
+      slots: timetable,
+      message: "Timetable generated successfully with all constraints respected.",
+      audit
+    });
+
+  } catch (err) {
+    console.error("TT Gen Error:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+app.post("/api/timetable/validate", async (req, res) => {
+  try {
+    const { slots } = req.body;
+    const conflicts = [];
+
+    const timeMap = {};
+    slots.forEach((s, index) => {
+      const key = `${s.day}_${s.time}`;
+      if (!timeMap[key]) timeMap[key] = [];
+      timeMap[key].push({ ...s, index });
+    });
+
+    for (const key in timeMap) {
+      const slotGroup = timeMap[key];
+      const faculties = new Set();
+      slotGroup.forEach(s => {
+        if (s.entries && s.entries.length > 0) {
+          s.entries.forEach(e => {
+            const fId = e.facultyId?._id ? e.facultyId._id.toString() : (e.facultyId ? e.facultyId.toString() : null);
+            if (fId) {
+              if (faculties.has(fId)) {
+                conflicts.push({ index: s.index, type: "Faculty Clash", message: `${e.facultyName || 'Faculty'} is already assigned at ${s.day} ${s.time}` });
+              } else {
+                faculties.add(fId);
+              }
+            }
+          });
+        } else if (s.facultyId) {
+          const fId = s.facultyId.toString();
+          if (faculties.has(fId)) {
+            conflicts.push({ index: s.index, type: "Faculty Clash", message: `${s.facultyName || 'Faculty'} is already assigned at ${s.day} ${s.time}` });
+          } else {
+            faculties.add(fId);
+          }
+        }
+      });
+    }
+
+    res.json({ success: true, conflicts });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/timetable/save", async (req, res) => {
+  try {
+    const { name, academicYear, term, semester, isDraft, slots } = req.body;
+    let timetable = await Timetable.findOne({ name, semester, academicYear, term });
+    if (timetable) {
+      timetable.slots = slots;
+      timetable.isDraft = isDraft;
+      await timetable.save();
+    } else {
+      timetable = new Timetable({ name, academicYear, term, semester, isDraft, slots });
+      await timetable.save();
+    }
+
+    res.json({ success: true, timetable });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/timetable/versions", async (req, res) => {
+  try {
+    const { academicYear, term, semester } = req.query;
+    const query = {};
+    if (academicYear) query.academicYear = academicYear;
+    if (term) query.term = term;
+    if (semester) query.semester = semester;
+    const versions = await Timetable.find(query).sort("-createdAt").select("-slots");
+    res.json({ success: true, versions });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/timetable/load/:id", async (req, res) => {
+  try {
+    const timetable = await Timetable.findById(req.params.id);
+    res.json({ success: true, timetable });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Delete a specific timetable draft
+app.post("/api/timetable/delete", async (req, res) => {
+  try {
+    const { academicYear, term, semester } = req.body;
+
+    if (!academicYear || !term || !semester) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    const result = await Timetable.deleteMany({
+      academicYear: academicYear.trim(),
+      term: term.trim(),
+      semester: parseInt(semester),
+      isDraft: true
+    });
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.deletedCount} drafts.`
+    });
+  } catch (err) {
+    console.error("Delete TT error:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+// Fetch the most recent draft for auto-loading
+app.get("/api/timetable/current-draft", async (req, res) => {
+  try {
+    const { academicYear, term, semester } = req.query;
+
+    const query = { isDraft: true };
+    if (academicYear) query.academicYear = academicYear.trim();
+    if (term) query.term = term.trim();
+    if (semester) query.semester = parseInt(semester);
+
+    const latestDraft = await Timetable.findOne(query).sort({ updatedAt: -1 });
+
+    if (!latestDraft) {
+      return res.json({ success: false, message: "No draft found" });
+    }
+
+    res.json({ success: true, timetable: latestDraft });
+  } catch (err) {
+    console.error("Fetch current draft error:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/* ================= ROOM MANAGEMENT ================= */
+app.get("/api/rooms", async (req, res) => {
+  try {
+    const rooms = await Room.find({ isActive: true });
+    res.json({ success: true, rooms });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/rooms/add", async (req, res) => {
+  try {
+    const { name, type, capacity } = req.body;
+    const room = new Room({ name, type, capacity });
+    await room.save();
+    res.json({ success: true, room });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/rooms/delete", async (req, res) => {
+  try {
+    const { id } = req.body;
+    await Room.findByIdAndDelete(id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ================= FACULTY ABSENCE & AVAILABILITY ================= */
+
+// Mark Faculty Absence
+app.post("/api/faculty/mark-absence", async (req, res) => {
+  try {
+    const { facultyId, facultyName, date, timeSlots } = req.body;
+
+    if (!facultyId || !date || !Array.isArray(timeSlots) || timeSlots.length === 0) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid date" });
+    }
+
+    const day = dateObj.toLocaleString('en-US', { weekday: 'long' });
+    console.log("Selected Slot:", timeSlots);
+    console.log("Day:", day);
+
+    const extractRange = (s) => {
+      if (!s) return "";
+      const str = String(s).trim();
+      const m = str.match(/\(([^)]+)\)/);
+      if (m && m[1]) return m[1].trim();
+      return str;
+    };
+
+    const timeToMinutes = (timeStr) => {
+      if (!timeStr) return null;
+      const s = String(timeStr).trim();
+      const match = s.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
+      if (!match) return null;
+      let h = parseInt(match[1], 10);
+      const m = parseInt(match[2] || "0", 10);
+      const ampm = (match[3] || "").toUpperCase();
+      if (ampm) {
+        if (ampm === "PM" && h !== 12) h += 12;
+        if (ampm === "AM" && h === 12) h = 0;
+      } else {
+        if (h >= 1 && h <= 7) h += 12;
+      }
+      return h * 60 + m;
+    };
+
+    const rangeToMinutes = (rangeStr) => {
+      const r = extractRange(rangeStr);
+      const parts = r.split(/\s*-\s*/);
+      if (parts.length !== 2) return null;
+      const start = timeToMinutes(parts[0]);
+      const end = timeToMinutes(parts[1]);
+      if (start == null || end == null) return null;
+      return { start, end };
+    };
+
+    const overlaps = (a, b) => a && b && a.start < b.end && a.end > b.start;
+
+    // Fallback to fetch name if not provided in body
+    let finalName = facultyName;
+    if (!finalName) {
+      const faculty = await Faculty.findById(facultyId).select("name").lean();
+      if (faculty) finalName = faculty.name;
+    }
+
+    // Load recent timetables (same data source as faculty timetable view)
+    const recentTimetables = await Timetable.find()
+      .sort({ updatedAt: -1 })
+      .select("semester slots.day slots.time slots.entries.facultyId slots.entries.subjectName slots.entries.subjectCode")
+      .limit(50)
+      .lean();
+
+    // Resolve each selected slot -> timetable match (semester + subject)
+    const resolved = [];
+    for (const selectedTimeSlot of timeSlots) {
+      const targetRange = rangeToMinutes(selectedTimeSlot);
+      let timetableEntry = null;
+
+      for (const tt of (recentTimetables || [])) {
+        for (const slot of (tt.slots || [])) {
+          if (!slot || slot.day !== day) continue;
+          const slotRange = rangeToMinutes(slot.time);
+          const timeMatches = (targetRange && slotRange)
+            ? overlaps(targetRange, slotRange)
+            : (String(slot.time || "") === String(selectedTimeSlot));
+          if (!timeMatches) continue;
+
+          const hit = (slot.entries || []).find(e => {
+            const id = e?.facultyId ? e.facultyId.toString() : "";
+            return id === String(facultyId);
+          });
+          if (!hit) continue;
+
+          timetableEntry = {
+            semester: tt.semester,
+            subject: hit.subjectName || hit.subjectCode || "Not Assigned",
+            canonicalTimeSlot: slot.time || String(selectedTimeSlot)
+          };
+          break;
+        }
+        if (timetableEntry) break;
+      }
+
+      console.log("Timetable Match:", timetableEntry);
+
+      if (!timetableEntry) {
+        return res.status(400).json({
+          success: false,
+          message: "Selected time slot doesn't have class in your timetable"
+        });
+      }
+
+      resolved.push({
+        timeSlot: String(selectedTimeSlot),
+        subject: timetableEntry.subject,
+        semester: timetableEntry.semester
+      });
+    }
+
+    // Prevent duplicates and save per-slot in Absence collection (required fields)
+    const startOfDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 23, 59, 59, 999);
+
+    const existing = await Absence.find({
+      facultyId,
+      date: { $gte: startOfDay, $lte: endOfDay },
+      timeSlot: { $in: resolved.map(r => r.timeSlot) }
+    }).select("timeSlot").lean();
+
+    const existingSet = new Set((existing || []).map(e => String(e.timeSlot)));
+    const toInsert = resolved
+      .filter(r => !existingSet.has(String(r.timeSlot)))
+      .map(r => ({
+        facultyId,
+        facultyName: finalName || "Unknown",
+        date: dateObj,
+        timeSlot: r.timeSlot,
+        subject: r.subject,
+        semester: r.semester
+      }));
+
+    if (toInsert.length > 0) {
+      const savedAbsences = await Absence.insertMany(toInsert);
+      console.log("Saved Absence:", savedAbsences);
+    }
+
+    return res.json({ success: true, message: "Absence marked successfully." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin: Fetch all absences
+app.get("/api/admin/absences", async (req, res) => {
+  try {
+    const raw = await Absence.find()
+      .populate("facultyId", "name email username")
+      .sort({ date: -1 })
+      .lean();
+
+    // Ensure timeSlots is ALWAYS an array for UI (multi-slot support)
+    // Group per facultyId + date(YYYY-MM-DD) so multiple slots show together.
+    const groupedMap = new Map();
+    const toYMD = (d) => {
+      const dt = new Date(d);
+      const yyyy = dt.getFullYear();
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    (raw || []).forEach(a => {
+      const fid = a?.facultyId?._id ? a.facultyId._id.toString() : (a?.facultyId ? a.facultyId.toString() : "");
+      const ymd = a?.date ? toYMD(a.date) : "unknown-date";
+      const key = `${fid}|${ymd}`;
+
+      const slotList = [];
+      if (a?.timeSlot) {
+        const ts = String(a.timeSlot);
+        // Guard against legacy comma-separated storage
+        if (ts.includes(",")) ts.split(",").map(x => x.trim()).filter(Boolean).forEach(x => slotList.push(x));
+        else slotList.push(ts);
+      }
+      if (Array.isArray(a?.timeSlots)) {
+        a.timeSlots.forEach(s => { if (s) slotList.push(String(s)); });
+      }
+
+      if (!groupedMap.has(key)) {
+        groupedMap.set(key, {
+          _id: a._id,
+          facultyId: a.facultyId,
+          facultyName: a.facultyName || a.facultyId?.name || "Unknown",
+          date: a.date,
+          semester: a.semester,
+          subject: a.subject,
+          timeSlots: []
+        });
+      }
+
+      const g = groupedMap.get(key);
+      slotList.forEach(s => {
+        if (!g.timeSlots.includes(s)) g.timeSlots.push(s);
+      });
+
+      // Prefer a real semester/subject if present on any record in the group
+      if ((g.semester == null || g.semester === "Not Assigned") && a.semester != null) g.semester = a.semester;
+      if ((!g.subject || g.subject === "Not Assigned") && a.subject) g.subject = a.subject;
+    });
+
+    const absences = Array.from(groupedMap.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
+    console.log("Fetched Absences:", absences.length);
+    res.json({ success: true, absences });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin: Get unique time slots from saved timetables (for dropdown population)
+app.get("/api/admin/timetable-timeslots", async (req, res) => {
+  try {
+    // Prefer final timetables; fall back to drafts if none exist
+    let timetables = await Timetable.find({ isDraft: false }).select("slots.time").lean();
+    if (!timetables || timetables.length === 0) {
+      timetables = await Timetable.find({}).select("slots.time").lean();
+    }
+
+    const timeSet = new Set();
+    timetables.forEach(tt => {
+      (tt.slots || []).forEach(slot => {
+        if (slot.time) timeSet.add(slot.time);
+      });
+    });
+
+    if (timeSet.size === 0) {
+      return res.json({ success: false, message: "No timetable found. Please generate a timetable first.", timeslots: [] });
+    }
+
+    // Sort chronologically by parsing the start portion of "HH:MM AM - HH:MM PM"
+    const parseTimeStr = (t) => {
+      const part = t.split(" - ")[0].trim(); // e.g. "09:00 AM"
+      const [timePart, meridiem] = part.split(" ");
+      let [h, m] = timePart.split(":").map(Number);
+      if (meridiem === "PM" && h !== 12) h += 12;
+      if (meridiem === "AM" && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    const sorted = Array.from(timeSet).sort((a, b) => parseTimeStr(a) - parseTimeStr(b));
+    res.json({ success: true, timeslots: sorted });
+  } catch (err) {
+    console.error("Timetable timeslots error:", err);
+    res.status(500).json({ success: false, message: "Server error", timeslots: [] });
+  }
+});
+
+// Alias for simpler access (for dynamic absence marking slots)
+app.get("/admin/timeslots", async (req, res) => {
+  try {
+    const timetables = await Timetable.find({}).select("slots.time").lean();
+    const timeSet = new Set();
+    timetables.forEach(tt => {
+      (tt.slots || []).forEach(slot => {
+        if (slot.time) timeSet.add(slot.time);
+      });
+    });
+
+    const parseTimeStr = (t) => {
+      const parts = t.split(" - ");
+      if (!parts[0]) return 0;
+      const part = parts[0].trim();
+      const match = part.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (!match) return 0;
+      let h = parseInt(match[1]);
+      const m = parseInt(match[2]);
+      const meridiem = match[3].toUpperCase();
+      if (meridiem === "PM" && h !== 12) h += 12;
+      if (meridiem === "AM" && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    const sorted = Array.from(timeSet).sort((a, b) => parseTimeStr(a) - parseTimeStr(b));
+    res.json({ success: true, timeSlots: sorted });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+/* ================= FREE FACULTY SEARCH ================= */
+
+/**
+ * Helper to get busy faculty IDs for a specific time range from Timetable.
+ * Assumes 'toMinutes' and 'Timetable' are available in scope.
+ */
+async function getFacultySchedule(day, term, startTime, endTime) {
+  const selStartMin = toMinutes(startTime);
+  const selEndMin = toMinutes(endTime);
+  const timetables = await Timetable.find({ term: term }).lean();
+  const busyFacultyIds = new Set();
+
+  timetables.forEach(tt => {
+    if (tt.slots) {
+      tt.slots.forEach(slot => {
+        if (slot.day === day) {
+          const parts = slot.time.split(/\s*-\s*/);
+          if (parts.length === 2) {
+            const slotStartMin = toMinutes(parts[0]);
+            const slotEndMin = toMinutes(parts[1]);
+            if (slotStartMin < selEndMin && slotEndMin > selStartMin) {
+              if (slot.entries) {
+                slot.entries.forEach(e => {
+                  if (e.facultyId) busyFacultyIds.add(e.facultyId.toString());
+                });
+              }
+            }
+          }
+        }
+      });
+    }
+  });
+  return Array.from(busyFacultyIds);
+}
+
+/**
+ * Main function to find free faculty for a given date and timeSlot.
+ * date format: YYYY-MM-DD
+ * timeSlot format: "HH:MM AM - HH:MM PM"
+ */
+async function getFreeFaculty(date, timeSlot) {
+  const [yyyy, mm, dd] = date.split('-').map(Number);
+  const dateObj = new Date(yyyy, mm - 1, dd);
+  const term = (mm >= 6 && mm <= 12) ? "Odd" : "Even";
+  const day = dateObj.toLocaleString('en-US', { weekday: 'long' });
+
+  const parts = timeSlot.split(/\s*-\s*/);
+  if (parts.length !== 2) return [];
+  const startTime = parts[0];
+  const endTime = parts[1];
+
+  // 1. Get faculty busy in timetable
+  const busyFacultyIds = await getFacultySchedule(day, term, startTime, endTime);
+
+  // 2. Get all approved faculty
+  const allFaculty = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER }).lean();
+  let freeFaculty = allFaculty.filter(f => !busyFacultyIds.includes(f._id.toString()));
+
+  // 3. Filter out those with registered absences
+  const startOfDay = new Date(yyyy, mm - 1, dd, 0, 0, 0, 0);
+  const endOfDay = new Date(yyyy, mm - 1, dd, 23, 59, 59, 999);
+  const absences = await Absence.find({
+    date: { $gte: startOfDay, $lte: endOfDay }
+  }).lean();
+
+  const selStartMin = toMinutes(startTime);
+  const selEndMin = toMinutes(endTime);
+
+  const absentFacultyIds = absences.filter(a => {
+    if (!a.timeSlots || a.timeSlots.length === 0) return true;
+    return a.timeSlots.some(rangeStr => {
+      const p = rangeStr.split(/\s*-\s*/);
+      if (p.length === 2) {
+        const aStart = toMinutes(p[0]);
+        const aEnd = toMinutes(p[1]);
+        return (aStart < selEndMin && aEnd > selStartMin);
+      }
+      return false;
+    });
+  }).map(a => a.facultyId.toString());
+
+  return freeFaculty.filter(f => !absentFacultyIds.includes(f._id.toString()));
+}
+
+/* ================= SUBSTITUTION SYSTEM (NEW APIs) ================= */
+// Adds only new endpoints as requested, and reuses the existing getFreeFaculty() logic.
+app.use(buildSubstitutionSystemRoutes({ getFreeFaculty }));
+
+/* ================= GET AVAILABLE FACULTY ================= */
+app.get("/available-faculty", async (req, res) => {
+  try {
+    const { date, timeSlot } = req.query;
+
+    if (!date || !timeSlot) {
+      return res.status(400).json({ success: false, message: "Date and timeSlot are required." });
+    }
+
+    const availableFaculties = await getFreeFaculty(date, timeSlot);
+
+    res.json({
+      success: true,
+      freeFaculties: availableFaculties.map(f => ({
+        facultyId: f.username,
+        name: f.name,
+        designation: f.role,
+        department: f.department
+      }))
+    });
+  } catch (err) {
+    console.error("Error in /available-faculty:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin: Identify available faculties based on date, startTime, and endTime
+// Enhanced Helper: Convert various time formats to minutes since midnight
+// Handles: "09:00 AM", "14:30", "Period 1 (9:30 - 10:30)", etc.
+function toMinutes(timeStr) {
+  if (!timeStr) return 0;
+  const s = timeStr.trim();
+
+  // Try to find a HH:MM or H:MM pattern
+  // Matches "09:30", "14:20", "9:00"
+  const timeMatch = s.match(/(\d{1,2}):(\d{2})/);
+  if (!timeMatch) return 0;
+
+  let hours = parseInt(timeMatch[1]);
+  const minutes = parseInt(timeMatch[2]);
+
+  // Check for AM/PM (case insensitive)
+  const ampmMatch = s.match(/(AM|PM)/i);
+  if (ampmMatch) {
+    const modifier = ampmMatch[1].toUpperCase();
+    if (modifier === 'PM' && hours !== 12) hours += 12;
+    if (modifier === 'AM' && hours === 12) hours = 0;
+  } else {
+    // If no AM/PM, but hour is 1-7, it's likely PM in a school context
+    // but 8-12 is likely AM. This is a heuristic.
+    if (hours >= 1 && hours <= 7) hours += 12;
+  }
+
+  return hours * 60 + minutes;
+}
+
+app.get("/api/admin/faculty-availability", async (req, res) => {
+  try {
+    const { date, startTime, endTime } = req.query;
+
+    if (!date || !startTime || !endTime) {
+      return res.status(400).json({ success: false, message: "Date, Start Time, and End Time are required." });
+    }
+
+    const [yyyy, mm, dd] = date.split('-').map(Number);
+    const term = (mm >= 6 && mm <= 12) ? "Odd" : "Even";
+    const day = new Date(yyyy, mm - 1, dd).toLocaleString('en-US', { weekday: 'long' });
+
+    const selStartMin = toMinutes(startTime);
+    const selEndMin = toMinutes(endTime);
+
+    console.log(`--- Availability Check: ${day} (${term}) | Range: ${startTime} - ${endTime} ---`);
+
+    // 1. FETCH ALL RELEVANT TIMETABLES (Drafts + Finalized)
+    const timetables = await Timetable.find({ term: term }).lean();
+
+    const busyFacultyIdsSet = new Set();
+    timetables.forEach(tt => {
+      if (tt.slots) {
+        tt.slots.forEach(slot => {
+          if (slot.day === day) {
+            const parts = slot.time.split(/\s*-\s*/);
+            if (parts.length === 2) {
+              const slotStartMin = toMinutes(parts[0]);
+              const slotEndMin = toMinutes(parts[1]);
+
+              if (slotStartMin < selEndMin && slotEndMin > selStartMin) {
+                if (slot.entries) {
+                  slot.entries.forEach(entry => {
+                    if (entry.facultyId) {
+                      busyFacultyIdsSet.add(entry.facultyId.toString());
+                    }
+                  });
+                }
+              }
+            }
+          }
+        });
+      }
+    });
+
+    const busyFacultyIds = Array.from(busyFacultyIdsSet);
+
+    // 2. FETCH ALL APPROVED FACULTY
+    const allFaculty = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER }).lean();
+
+    // 3. REMOVE BUSY FACULTY
+    const freeFaculty = allFaculty.filter(f => !busyFacultyIds.includes(f._id.toString()));
+
+    // 4. HANDLE ABSENCES (Calculate Absent Faculty IDs)
+    const startOfDay = new Date(yyyy, mm - 1, dd, 0, 0, 0, 0);
+    const endOfDay = new Date(yyyy, mm - 1, dd, 23, 59, 59, 999);
+    const absences = await Absence.find({ date: { $gte: startOfDay, $lte: endOfDay } }).lean();
+
+    const absentFacultyIds = absences.filter(a => {
+      // If they have no time slots, assume full-day absence
+      if (!a.timeSlots || a.timeSlots.length === 0) return true;
+
+      return a.timeSlots.some(rangeStr => {
+        const parts = rangeStr.split(/\s*-\s*/);
+        if (parts.length === 2) {
+          const aStart = toMinutes(parts[0]);
+          const aEnd = toMinutes(parts[1]);
+          return (aStart < selEndMin && aEnd > selStartMin);
+        }
+        return false;
+      });
+    }).map(a => a.facultyId.toString());
+
+    // 5. APPLY FINAL FILTER
+    const finalAvailableFaculty = freeFaculty.filter(f =>
+      !absentFacultyIds.includes(f._id.toString())
+    );
+
+    // DEBUG LOGS AS REQUESTED
+    console.log("Absent Faculty IDs:", absentFacultyIds);
+    console.log("Free Faculty IDs:", freeFaculty.map(f => f._id.toString()));
+    console.log("Final Faculty IDs:", finalAvailableFaculty.map(f => f._id.toString()));
+    console.log(`Busy: ${busyFacultyIds.length} | Absent: ${absentFacultyIds.length} | Final: ${finalAvailableFaculty.length}`);
+
+    console.log("-------------------------------------------");
+
+    res.json({
+      success: true,
+      freeFaculties: finalAvailableFaculty.map(f => ({
+        facultyId: f.username,
+        name: f.name,
+        designation: f.role,
+        department: f.department
+      }))
+    });
+
+  } catch (err) {
+    console.error("Availability API Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+
+
+/* ================= STUDENT TIMETABLE VIEW ================= */
+// GET /api/student/get-timetable?department=IT&semester=S5&year=2025-26
+app.get("/api/student/get-timetable", async (req, res) => {
+  console.log(`[student-tt] Request received: semester=${req.query.semester}, year=${req.query.year}`);
+  try {
+    const { semester, year } = req.query;
+
+    // Validate required parameters
+    if (!semester || !year) {
+      console.log("[student-tt] Missing parameters");
+      return res.status(400).json({
+        success: false,
+        message: "Please select Semester and Academic Year."
+      });
+    }
+
+    // Convert semester string (e.g. "S5") to number (5)
+    const semMatch = semester?.toString().match(/\d+/);
+    if (!semMatch) {
+      console.log("[student-tt] Invalid semester format:", semester);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid semester format. Use S1–S8."
+      });
+    }
+    const semNumber = parseInt(semMatch[0]);
+    const yearSearch = year.trim();
+
+    console.log(`[student-tt] Querying: sem=${semNumber}, year=${yearSearch}`);
+
+    // Flexible year matching using regex to handle variations like 2026-27 vs 2026-2027
+    const yearPattern = yearSearch.replace("-", ".*");
+    const timetableDoc = await Timetable.findOne({
+      academicYear: { $regex: new RegExp(yearPattern, "i") },
+      semester: semNumber
+    }).sort("-updatedAt").lean();
+
+    if (!timetableDoc) {
+      console.log(`[student-tt] No timetable found for sem ${semNumber}, year ${yearSearch}`);
+      return res.status(404).json({
+        success: false,
+        message: "No timetable has been generated yet for the selected Department, Semester, and Academic Year."
+      });
+    }
+
+    // Build a clean, student-friendly response from the slots array
+    const slots = (timetableDoc.slots || []).map(slot => {
+      const entries = (slot.entries && slot.entries.length > 0)
+        ? slot.entries.map(e => ({
+          subjectName: e.subjectName || "",
+          facultyName: e.facultyName || "",
+          subjectCode: e.subjectCode || "",
+          subjectType: (e.subjectType || "").toUpperCase()
+        }))
+        : [];
+
+      return {
+        day: slot.day,
+        timeSlot: slot.time,
+        entries,
+        roomNumber: slot.roomName || ""
+      };
+    });
+
+    res.json({
+      success: true,
+      timetable: {
+        name: timetableDoc.name,
+        academicYear: timetableDoc.academicYear,
+        semester: timetableDoc.semester,
+        term: timetableDoc.term,
+        slots
+      }
+    });
+
+  } catch (err) {
+    console.error("Student get-timetable error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Unable to fetch timetable. Please try again later."
+    });
+  }
+});
+
+/* ================= Helper function to cleanup old sessions ================= */
+async function cleanupOldSessions() {
+  try {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Clear force logout flags older than 24 hours
+    await Admin.updateMany(
+      { forceLogoutTime: { $lt: oneDayAgo } },
+      { $unset: { forceLogout: "", forceLogoutTime: "" } }
+    );
+
+    await Faculty.updateMany(
+      { forceLogoutTime: { $lt: oneDayAgo } },
+      { $unset: { forceLogout: "", forceLogoutTime: "" } }
+    );
+
+    await Student.updateMany(
+      { forceLogoutTime: { $lt: oneDayAgo } },
+      { $unset: { forceLogout: "", forceLogoutTime: "" } }
+    );
+
+    console.log("✅ Cleaned up old session flags");
+  } catch (err) {
+    console.error("Session cleanup error:", err);
+  }
+}
+
+// Run cleanup every hour
+setInterval(cleanupOldSessions, 60 * 60 * 1000);
+
+/* ================= MANUAL SUBJECT ENTRY APIs ================= */
+
+// Save a new manual entry
+app.post("/api/manual-entries", async (req, res) => {
+  try {
+    const { academicYear, semesterType, semester, subjectName, subjectCode, facultyName, weeklyHours, preferredSlots } = req.body;
+
+    // Validation
+    if (!academicYear || !semesterType || !semester || !subjectName || !subjectCode || !facultyName || !weeklyHours || !preferredSlots) {
+      return res.status(400).json({ success: false, message: "All fields are required." });
+    }
+
+    if (!Array.isArray(preferredSlots) || preferredSlots.length === 0) {
+      return res.status(400).json({ success: false, message: "At least one preferred slot is required." });
+    }
+
+    const newEntry = new ManualEntry({
+      academicYear,
+      semesterType,
+      semester,
+      subjectName,
+      subjectCode,
+      facultyName,
+      weeklyHours,
+      preferredSlots
+    });
+
+    await newEntry.save();
+    res.status(201).json({ success: true, entry: newEntry });
+  } catch (err) {
+    console.error("Error saving manual entry:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Fetch manual entries with filters
+app.get("/api/manual-entries", async (req, res) => {
+  try {
+    const { academicYear, semesterType, semester } = req.query;
+    const query = {};
+    if (academicYear) query.academicYear = academicYear;
+    if (semesterType) query.semesterType = semesterType;
+    if (semester) query.semester = semester;
+
+    const entries = await ManualEntry.find(query).sort({ createdAt: -1 });
+    res.json({ success: true, entries });
+  } catch (err) {
+    console.error("Error fetching manual entries:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Delete a specific manual entry
+app.delete("/api/manual-entries/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await ManualEntry.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Entry not found." });
+    }
+    res.json({ success: true, message: "Entry deleted successfully." });
+  } catch (err) {
+    console.error("Error deleting manual entry:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.listen(PORT, () =>
+  console.log(`✅ Server running at http://localhost:${PORT}`)
+);
