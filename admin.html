@@ -226,8 +226,7 @@
       height: 100%;
       background: rgba(0, 0, 0, 0.6);
       z-index: 2000;
-      display: none;
-      /* Hidden by default */
+      display: none; /* Hidden by default */
       align-items: center;
       justify-content: center;
       backdrop-filter: blur(4px);
@@ -244,15 +243,8 @@
     }
 
     @keyframes modalFadeIn {
-      from {
-        opacity: 0;
-        transform: scale(0.95);
-      }
-
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
     }
 
     @keyframes slideIn {
@@ -603,24 +595,12 @@
     }
 
     /* Type-based Colors */
-    .tt-slot-entry.theory {
-      border-left-color: #3b82f6;
-      background: #eff6ff;
-    }
-
-    .tt-slot-entry.lab {
-      border-left-color: #10b981;
-      background: #f0fdf4;
-    }
-
-    .tt-slot-entry.project {
-      border-left-color: #8b5cf6;
-      background: #faf5ff;
-    }
-
-    .tt-slot-entry.manual {
-      border-left-color: #f59e0b;
-      background: #fffbeb;
+    .tt-slot-entry.theory { border-left-color: #3b82f6; background: #eff6ff; }
+    .tt-slot-entry.lab { border-left-color: #10b981; background: #f0fdf4; }
+    .tt-slot-entry.project { border-left-color: #8b5cf6; background: #faf5ff; }
+    .tt-slot-entry.manual { 
+      border-left-color: #f59e0b; 
+      background: #fffbeb; 
       border-left-style: double;
       border-left-width: 6px;
       position: relative;
@@ -661,7 +641,6 @@
       gap: 6px;
       flex-wrap: wrap;
     }
-
     .tt-parallel-container .tt-slot-entry {
       flex: 1 1 calc(50% - 6px);
       min-width: 80px;
@@ -671,7 +650,6 @@
     .tt-slot.locked {
       background: #f8fafc;
     }
-
     .tt-lock-icon {
       position: absolute;
       top: 4px;
@@ -695,7 +673,6 @@
       opacity: 0.6;
       transition: all 0.2s;
     }
-
     .tt-slot:hover .tt-empty-placeholder {
       opacity: 1;
       border-color: #e2e8f0;
@@ -713,7 +690,6 @@
       border: 1px solid #e2e8f0;
       flex-wrap: wrap;
     }
-
     .legend-item {
       display: flex;
       align-items: center;
@@ -722,7 +698,6 @@
       color: #475569;
       font-weight: 500;
     }
-
     .legend-color {
       width: 14px;
       height: 14px;
@@ -740,7 +715,6 @@
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
       border: 1px solid #e2e8f0;
     }
-
     .legend-table th {
       background: #f1f5f9;
       color: #475569;
@@ -750,7 +724,6 @@
       padding: 12px 15px;
       text-align: left;
     }
-
     .legend-table td {
       padding: 12px 15px;
       border-top: 1px solid #e2e8f0;
@@ -766,45 +739,32 @@
       overflow-y: auto;
       padding: 5px;
     }
-
     .tt-available-subjects .tt-subject-card {
       background: white;
       border-radius: 8px;
       padding: 12px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       border-left: 4px solid #cbd5e1;
       cursor: grab;
       transition: all 0.2s;
     }
-
     .tt-available-subjects .tt-subject-card:hover {
       transform: translateY(-2px) scale(1.02);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
-
-    .tt-available-subjects .tt-subject-card.theory {
-      border-left-color: #3b82f6;
-    }
-
-    .tt-available-subjects .tt-subject-card.lab {
-      border-left-color: #10b981;
-    }
-
-    .tt-available-subjects .tt-subject-card.project {
-      border-left-color: #8b5cf6;
-    }
+    .tt-available-subjects .tt-subject-card.theory { border-left-color: #3b82f6; }
+    .tt-available-subjects .tt-subject-card.lab { border-left-color: #10b981; }
+    .tt-available-subjects .tt-subject-card.project { border-left-color: #8b5cf6; }
 
     /* Timeline enhancements */
     .timeline-container {
       scrollbar-width: thin;
       scrollbar-color: #cbd5e1 transparent;
     }
-
     .timeline-slot {
       border: 2px solid #fff;
       transition: transform 0.2s;
     }
-
     .timeline-slot:hover {
       transform: scale(1.05);
       z-index: 5;
@@ -921,12 +881,9 @@
       <a href="Timetable_rules.html" class="sidebar-link">Timetable Rules</a>
       <a href="javascript:void(0);" onclick="showTimePreferences(event); return false;" class="sidebar-link"
         id="timePrefsLink">Time Preferences</a>
-      <a href="#" onclick="showSection('timetableGen', this); return false;" class="sidebar-link">Timetable
-        Management</a>
-      <a href="#" onclick="showSection('absenceMonitoring', this); return false;" class="sidebar-link">Absence
-        Monitoring</a>
-      <a href="#" onclick="showSection('availabilityChecker', this); return false;" class="sidebar-link">Check Faculty
-        Availability</a>
+      <a href="#" onclick="showSection('timetableGen', this); return false;" class="sidebar-link">Time Table Gen</a>
+      <a href="#" onclick="showSection('absenceMonitoring', this); return false;" class="sidebar-link">Absence Monitoring</a>
+      <a href="#" onclick="showSection('availabilityChecker', this); return false;" class="sidebar-link">Check Faculty Availability</a>
       <a href="#" onclick="showSection('substitution', this); return false;" class="sidebar-link">Substitution</a>
       <div class="logout" onclick="logoutAdmin()"><i class="fas fa-sign-out-alt"></i> Logout</div>
     </div>
@@ -977,11 +934,8 @@
         <h3><i class="fas fa-upload" style="color: #3b82f6;"></i> Upload Students</h3>
         <div style="padding: 20px; background: #f8f9fa; border-radius: 10px;">
           <div style="margin-bottom: 20px;">
-            <label for="uploadTypeSelector"
-              style="display: block; margin-bottom: 8px; color: #4b5563; font-weight: bold;"><i class="fas fa-list"></i>
-              Select Upload Type:</label>
-            <select id="uploadTypeSelector" onchange="toggleUploadType()"
-              style="width: 100%; max-width: 300px; padding: 10px; border: 1px solid #d1d5db; border-radius: 5px;">
+            <label for="uploadTypeSelector" style="display: block; margin-bottom: 8px; color: #4b5563; font-weight: bold;"><i class="fas fa-list"></i> Select Upload Type:</label>
+            <select id="uploadTypeSelector" onchange="toggleUploadType()" style="width: 100%; max-width: 300px; padding: 10px; border: 1px solid #d1d5db; border-radius: 5px;">
               <option value="single">Single File Upload</option>
               <option value="odd">Odd Semester</option>
               <option value="even">Even Semester</option>
@@ -992,8 +946,7 @@
             <div style="margin-bottom: 15px;">
               <label for="studentUploadInput" style="display: block; margin-bottom: 8px; color: #4b5563;"><i
                   class="fas fa-file-excel"></i> Select Excel File:</label>
-              <input type="file" id="studentUploadInput" name="studentFile" accept=".xlsx,.xls"
-                style="margin-bottom: 10px;">
+              <input type="file" id="studentUploadInput" name="studentFile" accept=".xlsx,.xls" style="margin-bottom: 10px;">
             </div>
             <button onclick="uploadExcel()" id="uploadButton" class="approve"><i class="fas fa-cloud-upload-alt"></i>
               Upload Excel</button>
@@ -1030,58 +983,43 @@
       <div id="timetableGen" class="section">
         <h3><i class="fas fa-calendar-plus" style="color: #4ade80;"></i> Timetable Management</h3>
 
-        <div
-          style="background:#f8f9fa; padding:20px; border-radius:12px; margin-bottom:20px; border:1px solid #e2e8f0;">
-          <div
-            style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-bottom:15px;">
+        <div style="background:#f8f9fa; padding:20px; border-radius:12px; margin-bottom:20px; border:1px solid #e2e8f0;">
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-bottom:15px;">
             <div>
-              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Academic
-                Year</label>
-              <input type="text" id="ttAcademicYear" onchange="initializeEmptyGrid()" placeholder="e.g. 2024-2025"
-                style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Academic Year</label>
+              <input type="text" id="ttAcademicYear" onchange="initializeEmptyGrid()" placeholder="e.g. 2024-2025" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
             </div>
             <div>
-              <label
-                style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Term</label>
-              <select id="ttTerm" onchange="initializeEmptyGrid()"
-                style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Term</label>
+              <select id="ttTerm" onchange="initializeEmptyGrid()" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
                 <option value="Odd">Odd Semester</option>
                 <option value="Even">Even Semester</option>
               </select>
             </div>
             <div>
-              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Semester
-                Number</label>
-              <input type="number" id="ttSemester" onchange="initializeEmptyGrid()" placeholder="e.g. 1"
-                style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Semester Number</label>
+              <input type="number" id="ttSemester" onchange="initializeEmptyGrid()" placeholder="e.g. 1" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
             </div>
             <div>
-              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Timetable
-                Slot Draft</label>
+              <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Timetable Slot Draft</label>
               <div style="display: flex; gap: 8px;">
-                <select id="ttDraftId" onchange="loadTTDrafts()"
-                  style="flex: 1; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+                <select id="ttDraftId" onchange="loadTTDrafts()" style="flex: 1; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
                   <option value="">Use Global Rules</option>
                 </select>
-                <button onclick="saveCurrentStructureAsDraft()" class="save-structure-btn"
-                  title="Save current grid slots as a draft">
+                <button onclick="saveCurrentStructureAsDraft()" class="save-structure-btn" title="Save current grid slots as a draft">
                   <i class="fas fa-save"></i> Save Structure
                 </button>
               </div>
             </div>
           </div>
           <div style="display:flex; gap:10px;">
-            <button onclick="generateTimetable()" class="approve" style="flex:1; background:#0f172a;"><i
-                class="fas fa-magic"></i> Generate Timetable</button>
-            <button onclick="saveTimetable(true)" class="approve" style="flex:1; background:#8b5cf6;"><i
-                class="fas fa-save"></i> Save Draft</button>
-            <button onclick="deleteCurrentTimetable()" class="approve" style="flex:1; background:#ef4444;"><i
-                class="fas fa-trash"></i> Delete</button>
+            <button onclick="generateTimetable()" class="approve" style="flex:1; background:#0f172a;"><i class="fas fa-magic"></i> Generate Timetable</button>
+            <button onclick="saveTimetable(true)" class="approve" style="flex:1; background:#8b5cf6;"><i class="fas fa-save"></i> Save Draft</button>
+            <button onclick="deleteCurrentTimetable()" class="approve" style="flex:1; background:#ef4444;"><i class="fas fa-trash"></i> Delete</button>
           </div>
         </div>
 
-        <div id="ttConflicts" class="tt-slot conflict"
-          style="display:none; padding:12px; border-radius:8px; margin-bottom:15px; font-size:13px; font-weight:500;">
+        <div id="ttConflicts" class="tt-slot conflict" style="display:none; padding:12px; border-radius:8px; margin-bottom:15px; font-size:13px; font-weight:500;">
         </div>
 
 
@@ -1170,8 +1108,7 @@
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 15px;">
             <div class="form-group">
               <label>Select Date</label>
-              <input type="date" id="checkDate"
-                style="width:100%; border-radius:8px; border:1px solid #cbd5e1; padding:8px;">
+              <input type="date" id="checkDate" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; padding:8px;">
             </div>
             <div class="form-group">
               <label>Select Time Slot</label>
@@ -1180,8 +1117,7 @@
               </select>
             </div>
             <div class="form-group" style="display: flex; align-items: flex-end;">
-              <button onclick="checkFacultyAvailability()" class="approve" style="width:100%; margin:0;">Check
-                Availability</button>
+              <button onclick="checkFacultyAvailability()" class="approve" style="width:100%; margin:0;">Check Availability</button>
             </div>
           </div>
         </div>
@@ -1219,9 +1155,7 @@
               </tr>
             </thead>
             <tbody id="subAbsencesTableBody">
-              <tr>
-                <td colspan="4" class="no-data">Loading absences...</td>
-              </tr>
+              <tr><td colspan="4" class="no-data">Loading absences...</td></tr>
             </tbody>
           </table>
         </div>
@@ -1245,19 +1179,15 @@
         </div>
 
         <!-- Single bulk request button (no per-faculty buttons) -->
-        <div
-          style="margin-top:12px; display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin-bottom: 24px;">
-          <input type="datetime-local" id="deadlineInput"
-            style="padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; display:none;">
-          <button id="sendAllSubstitutionBtn" class="approve" style="display:none;"
-            onclick="sendSubstitutionRequestToAll()">
+        <div style="margin-top:12px; display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin-bottom: 24px;">
+          <input type="datetime-local" id="deadlineInput" style="padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; display:none;">
+          <button id="sendAllSubstitutionBtn" class="approve" style="display:none;" onclick="sendSubstitutionRequestToAll()">
             <i class="fas fa-paper-plane"></i> Send Request
           </button>
         </div>
 
         <div id="substitutionHistoryContainer">
-          <h4 style="margin-bottom:10px; color:#1e293b;"><i class="fas fa-history"></i> Substitution Request History
-          </h4>
+          <h4 style="margin-bottom:10px; color:#1e293b;"><i class="fas fa-history"></i> Substitution Request History</h4>
           <div class="card" style="padding:0; overflow:hidden;">
             <table id="subHistoryTable">
               <thead>
@@ -1270,9 +1200,7 @@
                 </tr>
               </thead>
               <tbody id="subHistoryTableBody">
-                <tr>
-                  <td colspan="5" class="no-data">Loading history...</td>
-                </tr>
+                <tr><td colspan="5" class="no-data">Loading history...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1325,34 +1253,25 @@
       <div style="padding: 20px; display: flex; flex-direction: column; gap: 15px;">
         <input type="hidden" id="manualSlotDay">
         <input type="hidden" id="manualSlotTime">
-
+        
         <div class="form-group">
-          <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Subject
-            Name</label>
-          <input type="text" id="manualSubName" placeholder="e.g. Workshop Practice"
-            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+          <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:5px;">Subject Name</label>
+          <input type="text" id="manualSubName" placeholder="e.g. Workshop Practice" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
         </div>
-
+        
         <div class="form-group">
-          <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Subject Code
-            / Abbreviation</label>
-          <input type="text" id="manualSubAbbr" placeholder="e.g. WP101"
-            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+          <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Subject Code / Abbreviation</label>
+          <input type="text" id="manualSubAbbr" placeholder="e.g. WP101" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
         </div>
-
+        
         <div class="form-group">
-          <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Faculty
-            Name</label>
-          <input type="text" id="manualFacName" placeholder="e.g. Mr. X (External)"
-            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+          <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Faculty Name</label>
+          <input type="text" id="manualFacName" placeholder="e.g. Mr. X (External)" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
         </div>
       </div>
-      <div class="modal-actions"
-        style="padding: 15px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; justify-content: flex-end;">
-        <button onclick="closeManualEntryModal()" style="background:#64748b; color:white; margin:0;"><i
-            class="fas fa-times"></i> Cancel</button>
-        <button onclick="saveManualEntry()" style="background:#3b82f6; color:white; margin:0;"><i
-            class="fas fa-save"></i> Save Entry</button>
+      <div class="modal-actions" style="padding: 15px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; justify-content: flex-end;">
+        <button onclick="closeManualEntryModal()" style="background:#64748b; color:white; margin:0;"><i class="fas fa-times"></i> Cancel</button>
+        <button onclick="saveManualEntry()" style="background:#3b82f6; color:white; margin:0;"><i class="fas fa-save"></i> Save Entry</button>
       </div>
     </div>
   </div>
@@ -1729,7 +1648,7 @@
       const uButton = document.getElementById("uploadButton");
 
       if (fInput && uButton) {
-        fInput.addEventListener("change", function () {
+        fInput.addEventListener("change", function() {
           const hasFile = this.files && this.files.length > 0;
           uButton.disabled = !hasFile;
           uButton.style.opacity = hasFile ? "1" : "0.5";
@@ -2084,7 +2003,7 @@
       } else {
         singleContainer.style.display = "none";
         semesterContainer.style.display = "block";
-
+        
         dynamicInputs.innerHTML = ""; // Clear existing
         const semesters = type === "odd" ? [1, 3, 5, 7] : [2, 4, 6, 8];
         const semTypeLabel = type === "odd" ? "Odd" : "Even";
@@ -2104,7 +2023,7 @@
           `;
           dynamicInputs.appendChild(row);
         });
-
+        
         // Re-check files after rendering dynamic inputs to setup disabled states
         checkUploadedFile();
       }
@@ -2112,7 +2031,7 @@
 
     async function uploadSemesterExcel(semester, semesterType, inputId) {
       const fInput = document.getElementById(inputId);
-
+      
       if (!fInput || !fInput.files || fInput.files.length === 0) {
         showNotification("Choose file first for Semester " + semester, "warning");
         return;
@@ -2153,12 +2072,12 @@
     async function uploadExcel() {
       const fInput = document.getElementById("studentUploadInput");
       console.log("Upload button clicked. Input element:", fInput);
-
+      
       if (!fInput) {
         showNotification("Upload input not found!", "error");
         return;
       }
-
+      
       console.log("Files available:", fInput.files ? fInput.files.length : "undefined");
 
       if (!fInput.files || fInput.files.length === 0) {
@@ -2220,7 +2139,7 @@
 
         if (data.success) {
           showNotification(data.message || "File removed!", "success");
-
+          
           if (key === 'student_file_info') {
             const fInput = document.getElementById("studentUploadInput");
             if (fInput) fInput.value = "";
@@ -2274,7 +2193,7 @@
           const semInput = document.getElementById(`studentUploadInput_${sem}`);
           const semBtn = document.querySelector(`button[onclick*="uploadSemesterExcel(${sem}"]`);
           const semUploadedFileDiv = document.getElementById(`uploadedFile_${sem}`);
-
+          
           if (semInput) semInput.disabled = false;
           if (semBtn) semBtn.disabled = false;
           if (semUploadedFileDiv) semUploadedFileDiv.innerHTML = "";
@@ -2307,10 +2226,10 @@
             const semInput = document.getElementById(`studentUploadInput_${sem}`);
             const semBtn = document.querySelector(`button[onclick*="uploadSemesterExcel(${sem}"]`);
             const semUploadedFileDiv = document.getElementById(`uploadedFile_${sem}`);
-
+            
             if (semInput) semInput.disabled = true;
             if (semBtn) semBtn.disabled = true;
-
+            
             if (semUploadedFileDiv) {
               semUploadedFileDiv.innerHTML = `
                 <div style="display:flex; align-items:center; gap:10px; background:#e8f5e8; padding:10px; border-radius:5px; border: 1px solid #16a34a; margin-top: 10px;">
@@ -2342,13 +2261,8 @@
         const data = await res.json();
         table.innerHTML = "";
 
-        // Filter faculty to only those with non‑empty time preferences
-        const facultyWithPrefs = data.faculty?.filter(f =>
-          f.timePreferences && Array.isArray(f.timePreferences) && f.timePreferences.length > 0
-        ) || [];
-
-        if (facultyWithPrefs.length > 0) {
-          facultyWithPrefs.forEach(f => {
+        if (data.faculty && data.faculty.length > 0) {
+          data.faculty.forEach(f => {
             let times = "—";
             if (Array.isArray(f.timePreferences) && f.timePreferences.length) {
               times = f.timePreferences.map(p => {
@@ -2364,26 +2278,26 @@
 
             const row = document.createElement("tr");
             row.innerHTML = `
-          <td><strong>${f.name || ''}</strong><br><small style="color: #6b7280;">${f.username || ''}</small></td>
-          <td style="text-align: left;">${times}</td>
-          <td>${f.canTakeBackToBack ? '<span style="color:#16a34a;">✓ Yes</span>' : '<span style="color:#dc2626;">✗ No</span>'}</td>
-          <td style="color: ${statusColor}; font-weight: bold;">
-            ${status.charAt(0).toUpperCase() + status.slice(1)}
-            ${status === "rejected" && f.preferenceRejectionReason ? `<br><small>Reason: ${f.preferenceRejectionReason}</small>` : ""}
-          </td>
-          <td>
-            ${status === "pending" ? `
-              <button class="approve" onclick="acceptPreference('${f._id}')"><i class="fas fa-check"></i> Accept</button>
-              <button style="background:#dc2626; color:white;" onclick="openPreferenceRejectionModal('${f._id}')"><i class="fas fa-times"></i> Reject</button>
-            ` : `
-              <button style="background:#6b7280; color:white;" onclick="resetPreferenceStatus('${f._id}')"><i class="fas fa-undo"></i> Reset</button>
-            `}
-          </td>
-        `;
+              <td><strong>${f.name || ''}</strong><br><small style="color: #6b7280;">${f.username || ''}</small></td>
+              <td style="text-align: left;">${times}</td>
+              <td>${f.canTakeBackToBack ? '<span style="color:#16a34a;">✓ Yes</span>' : '<span style="color:#dc2626;">✗ No</span>'}</td>
+              <td style="color: ${statusColor}; font-weight: bold;">
+                ${status.charAt(0).toUpperCase() + status.slice(1)}
+                ${status === "rejected" && f.preferenceRejectionReason ? `<br><small>Reason: ${f.preferenceRejectionReason}</small>` : ""}
+              </td>
+              <td>
+                ${status === "pending" ? `
+                  <button class="approve" onclick="acceptPreference('${f._id}')"><i class="fas fa-check"></i> Accept</button>
+                  <button style="background:#dc2626; color:white;" onclick="openPreferenceRejectionModal('${f._id}')"><i class="fas fa-times"></i> Reject</button>
+                ` : `
+                  <button style="background:#6b7280; color:white;" onclick="resetPreferenceStatus('${f._id}')"><i class="fas fa-undo"></i> Reset</button>
+                `}
+              </td>
+            `;
             table.appendChild(row);
           });
         } else {
-          table.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;"><i class="fas fa-clock" style="font-size: 40px; color: #9ca3af; margin-bottom: 10px;"></i><br>No faculty have submitted time preferences yet.</td></tr>`;
+          table.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;"><i class="fas fa-clock" style="font-size: 40px; color: #9ca3af; margin-bottom: 10px;"></i><br>No faculty preferences found</td></tr>`;
         }
       } catch (err) {
         console.error(err);
@@ -2551,11 +2465,11 @@
       console.log("Initializing empty grid and clearing local state");
       timetableData = [];
       renderTimetable([]);
-
+      
       const academicYear = document.getElementById("ttAcademicYear").value;
       const term = document.getElementById("ttTerm").value;
       const semester = document.getElementById("ttSemester").value;
-
+      
       if (academicYear && semester) {
         fetchAllocationsForManual(academicYear, term, semester);
       }
@@ -2716,7 +2630,7 @@
       uniqueDays.forEach(day => {
         html += `<tr>
           <td class="tt-time-col">${day}</td>`;
-
+        
         uniqueTimes.forEach(time => {
           const slot = slots.find(s => s.day === day && s.time === time);
           const isConflict = slot && slot.conflict;
@@ -2740,7 +2654,7 @@
           let cellContent = "";
           if (entries.length > 0) {
             const isParallel = entries.length > 1;
-
+            
             if (isParallel) {
               cellContent = `<div class="tt-parallel-container">`;
               entries.forEach(e => {
@@ -2808,9 +2722,9 @@
               </thead>
               <tbody>
                 ${legendKeys.sort().map(code => {
-          const item = legendMap[code];
-          const facList = Array.from(item.faculties).sort().join(' / ');
-          return `
+            const item = legendMap[code];
+            const facList = Array.from(item.faculties).sort().join(' / ');
+            return `
                   <tr>
                     <td><strong>${code}</strong></td>
                     <td>${item.name || '—'}</td>
@@ -3323,7 +3237,7 @@
         if (data.success) {
           closeManualEntryModal();
           // Re-initialize to show the new entry (or we could update locally)
-          initializeEmptyGrid();
+          initializeEmptyGrid(); 
           showNotification("Manual entry saved and locked persistently.", "success");
         } else {
           showNotification(data.message, "error");
@@ -3437,7 +3351,7 @@
         if (data.success) {
           const resultsDiv = document.getElementById("availabilityResults");
           const tbody = document.getElementById("availableFacultyTableBody");
-
+          
           resultsDiv.style.display = "block";
           if (data.freeFaculties.length === 0) {
             tbody.innerHTML = `<tr><td colspan="4" class="no-data">No available faculty members found for this slot.</td></tr>`;
@@ -3560,12 +3474,12 @@
         let html = "";
         list.forEach(r => {
           // Use populated name from database only
-          const absentName = r.absentFacultyId?.name || "Unknown";
+          const absentName = r.absentFacultyId?.name || "Unknown"; 
           const assignedName = r.assignedFacultyId?.name || "-";
 
           // Format date correctly using toLocaleDateString()
           const dateLabel = r.date ? new Date(r.date).toLocaleDateString() : "-";
-
+          
           const slot = r.timeSlot || "-";
           const sem = (r.semester != null && r.semester !== "") ? `Semester ${r.semester}` : "-";
           const deadline = r.deadline ? new Date(r.deadline).toLocaleString() : "-";
@@ -3599,7 +3513,7 @@
           substitutionHistoryInterval = setInterval(() => {
             const subSection = document.getElementById("substitution");
             if (!subSection || subSection.style.display === "none") return;
-            loadSubstitutionHistory().catch(() => { });
+            loadSubstitutionHistory().catch(() => {});
           }, 10000);
         }
       } catch (err) {
@@ -3691,7 +3605,7 @@
           // Show only if there is at least one free faculty in any selected slot
           const hasAny = (slotsToRender || []).some(s => (slotWise[s] || []).length > 0);
           const alreadySent = (slotsToRender || []).some(s => slotSent[s]);
-
+          
           btn.style.display = hasAny ? "inline-flex" : "none";
           if (deadlineInput) deadlineInput.style.display = hasAny ? "inline-flex" : "none";
 

@@ -27,7 +27,7 @@ const FacultyAllocationSchema = new mongoose.Schema({
   subjectName: { type: String, required: true },
   subjectType: {
     type: String,
-    enum: ["Theory", "Lab", "Project"],
+    enum: ["Theory", "Lab", "Project", "Manual"],
     required: true
   },
   subjectAbbreviation: { type: String },
@@ -115,9 +115,19 @@ FacultyAllocationSchema.virtual("allocationStatus").get(function () {
   return "Active";
 });
 
-// Pre-save hook to validate hours - UPDATED WITH HIGHER LIMITS
-FacultyAllocationSchema.pre("save", async function (next) {
-  // Validate weekly hours based on subject type - INCREASED LIMITS
+// Pre-save hook to validate and normalize - UPDATED WITH HIGHER LIMITS
+// Pre-validate hook to normalize and validate
+FacultyAllocationSchema.pre("validate", function () {
+  // Normalize subjectType to PascalCase
+  if (this.subjectType) {
+    const t = this.subjectType.toString().toLowerCase();
+    if (t === "theory") this.subjectType = "Theory";
+    else if (t === "lab") this.subjectType = "Lab";
+    else if (t === "project") this.subjectType = "Project";
+    else if (t === "manual") this.subjectType = "Manual";
+  }
+
+  // Validate weekly hours based on subject type
   if (this.subjectType === "Theory" && this.weeklyHours > 12) {
     throw new Error("Theory subjects cannot exceed 12 hours per week");
   }
@@ -130,7 +140,7 @@ FacultyAllocationSchema.pre("save", async function (next) {
     throw new Error("Project subjects cannot exceed 12 hours per week");
   }
 
-  // Validate priority range - UPDATED TO 25
+  // Validate priority range
   if (this.priority < 1 || this.priority > 25) {
     throw new Error("Priority must be between 1 and 25");
   }
@@ -139,8 +149,6 @@ FacultyAllocationSchema.pre("save", async function (next) {
   if (this.semester < 1 || this.semester > 8) {
     throw new Error("Semester must be between 1 and 8");
   }
-
-  if (typeof next === 'function') next();
 });
 
 // Static method to check if faculty is overloaded

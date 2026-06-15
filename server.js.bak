@@ -31,7 +31,6 @@ const SubstitutionRequest = require("./SubstitutionRequest");
 const Message = require("./Message");
 const SubstitutionRequests = require("./substitutionRequests");
 const buildSubstitutionSystemRoutes = require("./substitutionSystemRoutes");
-const ManualEntry = require("./ManualEntry");
 
 
 const DESIGNATION_PRIORITY = {
@@ -58,16 +57,6 @@ function normalizeDesignation(designation) {
       console.warn(`\u26A0\uFE0F Unknown designation encountered: "${designation}". Defaulting safely to "Assistant Professor".`);
       return "Assistant Professor";
   }
-}
-
-function normalizeSubjectType(type) {
-  if (!type) return "Theory";
-  const t = type.toLowerCase();
-  if (t === "theory") return "Theory";
-  if (t === "lab") return "Lab";
-  if (t === "project") return "Project";
-  if (t === "manual") return "Manual";
-  return "Theory";
 }
 
 const cron = require("node-cron");
@@ -1728,7 +1717,7 @@ app.post("/api/subjects", async (req, res) => {
       });
     }
 
-
+    
     if (!department || department.trim() === '') {
       return res.json({
         success: false,
@@ -1743,9 +1732,9 @@ app.post("/api/subjects", async (req, res) => {
       });
     }
 
-    const exists = await Subject.findOne({
+    const exists = await Subject.findOne({ 
       code: code.toUpperCase(),
-      department: department.toUpperCase()
+      department: department.toUpperCase() 
     });
 
     if (exists) {
@@ -2393,7 +2382,7 @@ app.post("/admin/upload-students", upload.single("file"), async (req, res) => {
     }
 
     console.log(`📂 File details: name=${req.file.originalname}, path=${req.file.path}, size=${req.file.size}`);
-
+    
     const workbook = new ExcelJS.Workbook();
     try {
       console.log("⏳ Reading Excel file...");
@@ -2503,11 +2492,11 @@ app.post("/admin/upload-students", upload.single("file"), async (req, res) => {
           });
         }
 
-        const universityRegNo =
-          regNo ||
-          rowData.universityRegNo ||
-          rowData.registerNo ||
-          rowData["Register Number"] ||
+        const universityRegNo = 
+          regNo || 
+          rowData.universityRegNo || 
+          rowData.registerNo || 
+          rowData["Register Number"] || 
           rowData["Reg No"];
 
         const finalUniversityRegNo = (universityRegNo || "").toString().trim();
@@ -2553,7 +2542,7 @@ app.post("/admin/upload-students", upload.single("file"), async (req, res) => {
 
     const existingByRegNo = new Map();
     const existingByEmail = new Map();
-
+    
     existingStudents.forEach(s => {
       existingByRegNo.set(s.regNo, s);
       existingByEmail.set(s.email, s);
@@ -2570,7 +2559,7 @@ app.post("/admin/upload-students", upload.single("file"), async (req, res) => {
       try {
         // Check by RegNo primarily
         let existing = existingByRegNo.get(student.regNo);
-
+        
         // If not found by regNo, check by email
         if (!existing) {
           existing = existingByEmail.get(student.email);
@@ -2634,15 +2623,15 @@ app.post("/admin/upload-students", upload.single("file"), async (req, res) => {
     const keyStr = req.body.semester ? `student_file_info_sem_${req.body.semester}` : "student_file_info";
     await Settings.findOneAndUpdate(
       { key: keyStr },
-      {
-        value: {
-          batchId,
-          fileName: req.file.originalname,
+      { 
+        value: { 
+          batchId, 
+          fileName: req.file.originalname, 
           uploadDate: new Date(),
           recordCount: newStudentsData.length,
           semester: req.body.semester ? Number(req.body.semester) : null,
           semesterType: req.body.semesterType || null
-        }
+        } 
       },
       { upsert: true }
     );
@@ -2653,7 +2642,7 @@ app.post("/admin/upload-students", upload.single("file"), async (req, res) => {
       const persistentFileName = `students_${batchId}.xlsx`;
       const persistentPath = path.join(uploadDir, persistentFileName);
       fs.copyFileSync(req.file.path, persistentPath);
-
+      
       fs.unlinkSync(req.file.path);
       console.log("🧹 Temporary file deleted, persistent copy saved");
     }
@@ -2666,10 +2655,10 @@ app.post("/admin/upload-students", upload.single("file"), async (req, res) => {
 
   } catch (err) {
     console.error("🔥 CRITICAL UPLOAD ERROR:", err);
-
+    
     // Cleanup on crash
     if (req.file && fs.existsSync(req.file.path)) {
-      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
     }
 
     res.status(500).json({
@@ -2727,11 +2716,11 @@ app.get("/admin/check-student-file", async (req, res) => {
       semester: entry.value.semester,
       semesterType: entry.value.semesterType
     }));
-
+    
     if (files.length > 0) {
-      return res.json({
-        exists: true,
-        files
+      return res.json({ 
+        exists: true, 
+        files 
       });
     }
     res.json({ exists: false, files: [] });
@@ -3753,7 +3742,7 @@ app.get("/faculty/allocations", async (req, res) => {
     const formattedAllocations = allocations.map(allocation => ({
       subjectCode: allocation.subjectCode,
       subjectName: allocation.subjectName || allocation.subjectCode,
-      subjectType: (allocation.subjectType || "THEORY").toUpperCase(),
+      subjectType: allocation.subjectType || "Theory",
       weeklyHours: allocation.weeklyHours || 0,
       semester: allocation.semester || 1,
       allocationDate: allocation.allocatedAt || allocation.createdAt || new Date(),
@@ -3781,7 +3770,7 @@ app.get("/faculty/allocations", async (req, res) => {
 app.post("/admin/strict-allocate", async (req, res) => {
   try {
     let { viewOnly, targetSemester, academicYear: reqAcademicYear, term: reqTerm, department: reqDept } = req.body;
-
+    
     // Centralized designation priority for consistent seniority ranking
     const designationPriority = {
       "professor": 1,
@@ -3829,7 +3818,7 @@ app.post("/admin/strict-allocate", async (req, res) => {
 
     // Build query for subjects to be used in allocation
     let allocationSubjectQuery = {};
-
+    
     // Add department filter if provided
     if (reqDept && reqDept !== "ALL") {
       allocationSubjectQuery.department = reqDept.toUpperCase();
@@ -4038,7 +4027,7 @@ app.post("/admin/strict-allocate", async (req, res) => {
 
         const info = subjectAllocationMap[s.code];
         if (!info) return true;
-
+        
         const isTheory = s.type?.toLowerCase() === "theory";
         if (isTheory) return !info.allocated;
         return info.count < info.max;
@@ -4374,11 +4363,9 @@ app.post("/admin/strict-allocate", async (req, res) => {
 
       // Create allocation record
       const allocation = {
-        subjectId: subject._id,
         subjectCode: subjectCode,
         subjectName: subject.name,
-        subjectType: normalizeSubjectType(isTheory ? "Theory" : (subject.type || "Lab")),
-        subjectAbbreviation: subject.abbreviation || subject.code,
+        subjectType: isTheory ? "Theory" : (subject.type?.charAt(0).toUpperCase() + subject.type?.slice(1) || "Lab"),
         weeklyHours: subjectHours,
         isTheory: isTheory,
         semester: Number(subject.semester) || 1,
@@ -4474,7 +4461,7 @@ app.post("/admin/strict-allocate", async (req, res) => {
 
           // If they still have remaining hours, check if they have any preferences left to evaluate
           if (load.theoryPrefIndex >= (prefMap[username]?.theory?.length || 0) &&
-            load.labPrefIndex >= (prefMap[username]?.lab?.length || 0)) {
+              load.labPrefIndex >= (prefMap[username]?.lab?.length || 0)) {
             continue; // completely exhausted all preferences
           }
 
@@ -4485,7 +4472,7 @@ app.post("/admin/strict-allocate", async (req, res) => {
           while (!subjectAllocatedThisRound && load.remainingHours > 0) {
             const nextTheory = getNextTheory(username);
             if (!nextTheory) break; // exhausted theories
-
+            
             if (allocateSubject(username, nextTheory.subject, true, nextTheory.priority, nextTheory.source)) {
               console.log("Allocated subject:", nextTheory.subject._id);
               subjectAllocatedThisRound = true;
@@ -4523,7 +4510,7 @@ app.post("/admin/strict-allocate", async (req, res) => {
     for (const faculty of seniorityOrder) {
       const username = faculty.username.trim().toLowerCase();
       const load = facultyLoad[username];
-
+      
       if (load.remainingHours > 0) {
         if (load.usedHours === 0) {
           console.log(`   UNDERLOAD: No valid subjects for faculty`);
@@ -4568,7 +4555,7 @@ app.post("/admin/strict-allocate", async (req, res) => {
     const subjectsFromOtherSemesters = allSubjects.filter(subject =>
       !validSubjectCodesForAllocation.has(subject.code)
     );
-
+    
     if (subjectsFromOtherSemesters.length > 0) {
       console.log(`ℹ️ Internal Note: ${subjectsFromOtherSemesters.length} subjects from other semesters were ignored in this run.`);
     }
@@ -4595,11 +4582,8 @@ app.post("/admin/strict-allocate", async (req, res) => {
           minTheory: load.minTheory,
           minLab: load.minLab,
           allocations: load.allocations.map(a => ({
-            subjectId: a.subjectId,
             subjectCode: a.subjectCode,
-            subjectName: a.subjectName,
-            subjectType: normalizeSubjectType(a.subjectType),
-            subjectAbbreviation: a.subjectAbbreviation || a.subjectCode,
+            subjectType: a.subjectType,
             weeklyHours: a.weeklyHours,
             source: a.source,
             priority: a.priority
@@ -4666,7 +4650,7 @@ app.post("/admin/strict-allocate", async (req, res) => {
       academicYear: academicYear,
       term: reqTerm || ((parseInt(allocationSemesterType) % 2 === 1) ? "Odd" : "Even")
     };
-
+    
     // Additional semester-based safety filter if applicable
     if (reqTerm === "Odd") {
       deleteQuery.semester = { $in: [1, 3, 5, 7] };
@@ -4738,7 +4722,7 @@ app.post("/admin/strict-allocate", async (req, res) => {
           subjectId: subject._id,
           subjectCode: subject.code,
           subjectName: subject.name,
-          subjectType: normalizeSubjectType(alloc.subjectType),
+          subjectType: alloc.subjectType,
           subjectAbbreviation: subject.abbreviation || subject.code,
 
           weeklyHours: alloc.weeklyHours,
@@ -5462,7 +5446,7 @@ app.get('/faculty/allocations/:facultyId', async (req, res) => {
     const formattedAllocations = allocations.map(allocation => ({
       subjectCode: allocation.subjectCode,
       subjectName: allocation.subjectName,
-      subjectType: normalizeSubjectType(allocation.subjectType),
+      subjectType: allocation.subjectType,
       weeklyHours: allocation.weeklyHours,
       semester: allocation.semester,
       allocationDate: allocation.allocatedAt
@@ -5676,7 +5660,7 @@ app.get("/faculty/allocations", async (req, res) => {
         return {
           subjectCode: alloc.subjectCode,
           subjectName: subject?.name || alloc.subjectName || alloc.subjectCode,
-          subjectType: normalizeSubjectType(alloc.subjectType),
+          subjectType: alloc.subjectType || "Theory",
           weeklyHours: alloc.weeklyHours || 0,
           semester: subject?.semester || alloc.semester || "N/A",
           credit: subject?.credit || 0,
@@ -6063,7 +6047,7 @@ app.post("/admin/save-edited-allocations", async (req, res) => {
 
     const currentYear = new Date().getFullYear();
     const defaultAcademicYear = `${currentYear}-${currentYear + 1}`;
-
+    
     academicYear = academicYear ? academicYear.replace(/\s+/g, '') : defaultAcademicYear;
     term = term ? term.trim() : "Odd";
 
@@ -6141,7 +6125,7 @@ app.post("/admin/save-edited-allocations", async (req, res) => {
         subjectId: subject._id,
         subjectCode: subject.code,
         subjectName: subject.name,
-        subjectType: normalizeSubjectType(alloc.subjectType),
+        subjectType: alloc.subjectType || "Theory",
         subjectAbbreviation: subject.abbreviation || subject.code,
 
         weeklyHours: alloc.weeklyHours || 0,
@@ -6641,7 +6625,7 @@ app.get("/faculty/my-allocations", async (req, res) => {
       return {
         subjectCode: alloc.subjectCode,
         subjectName: alloc.subjectName || alloc.subjectCode,
-        subjectType: normalizeSubjectType(alloc.subjectType),
+        subjectType: alloc.subjectType || "Theory",
         weeklyHours: hours,
         semester: alloc.semester || "N/A",
         credit: alloc.credit || 0,
@@ -6692,7 +6676,7 @@ app.get("/faculty/my-timetable", async (req, res) => {
 
     const facultyTimetable = {};
     const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-
+    
     // Initialize day map
     days.forEach(d => facultyTimetable[d] = {});
 
@@ -6710,22 +6694,22 @@ app.get("/faculty/my-timetable", async (req, res) => {
           // Identify if this faculty is assigned to this entry
           // Flexible matching: check facultyId OR facultyName
           const fId = entry.facultyId?._id || entry.facultyId;
-
+          
           const isIdMatch = fId && fId.toString() === faculty._id.toString();
-          const isNameMatch = entry.facultyName &&
-            entry.facultyName.toLowerCase().trim() === faculty.name.toLowerCase().trim();
+          const isNameMatch = entry.facultyName && 
+                             entry.facultyName.toLowerCase().trim() === faculty.name.toLowerCase().trim();
 
           if (isIdMatch || isNameMatch) {
             matchCount++;
             console.log(`[my-timetable] MATCH: ${day} at ${time} - ${entry.subjectName} (${tt.name})`);
-
+            
             if (!facultyTimetable[day][time]) {
               facultyTimetable[day][time] = [];
             }
-
+            
             // Avoid duplicate display if multiple versions exist for the same slot
-            const exists = facultyTimetable[day][time].some(e =>
-              e.subjectName === entry.subjectName &&
+            const exists = facultyTimetable[day][time].some(e => 
+              e.subjectName === entry.subjectName && 
               e.semester === `Semester ${semester}`
             );
 
@@ -6736,7 +6720,7 @@ app.get("/faculty/my-timetable", async (req, res) => {
                 semester: `Semester ${semester}`,
                 department: deptName,
                 room: slot.roomName || "N/A",
-                name: tt.name
+                name: tt.name 
               });
             }
           }
@@ -6745,7 +6729,7 @@ app.get("/faculty/my-timetable", async (req, res) => {
     });
 
     console.log(`[my-timetable] Search complete for ${faculty.name}. Total matches: ${matchCount}`);
-
+    
     res.json({
       success: true,
       timetable: facultyTimetable
@@ -6879,9 +6863,7 @@ app.post("/api/timetable/generate", async (req, res) => {
 
     academicYear = academicYear.replace(/\s+/g, '');
     term = term.trim();
-    // Support both "4" and "S4" formats
-    const targetSemester = typeof semester === 'string' ? parseInt(semester.replace(/\D/g, '')) : parseInt(semester);
-    console.log(`[generate] Target semester: ${targetSemester} (type: ${typeof targetSemester})`);
+    const targetSemester = parseInt(semester);
 
     // 0. STRONG IDEMPOTENCY - Clean up existing drafts for this sem/year/term
     console.log(`[generate] Cleaning up existing drafts for Sem ${targetSemester}, ${academicYear}, ${term}`);
@@ -6895,39 +6877,13 @@ app.post("/api/timetable/generate", async (req, res) => {
     // 1. Fetch & Format Rules (Use Draft if provided)
     let rawRules = {};
     let manualEntries = [];
-
-    // Map term to semesterType as stored in ManualEntry
-    const semesterType = (term.toLowerCase() === "odd") ? "ODD" : "EVEN";
-    const semString = `S${targetSemester}`;
-
-    // ALWAYS Fetch manual entries for this academic context from the DB
-    console.log(`[generate] Fetching manual entries for Year:${academicYear}, Type:${semesterType}, Sem:${semString}`);
-    const dbManualEntries = await ManualEntry.find({
-      academicYear,
-      semesterType,
-      semester: semString
-    }).lean();
-    console.log(`[generate] Found ${dbManualEntries.length} database manual entries for ${semString}`);
-
     if (draftId) {
       const draft = await TimetableDraft.findById(draftId);
       if (!draft) return res.json({ success: false, message: "Selected draft not found." });
-
-      // If we have a draft, we might have additional manual overrides 
-      // but the user requirement stresses fetching them for the context.
-      // We'll merge them, avoiding duplicates by subjectCode.
-      const entryMap = new Map();
-      dbManualEntries.forEach(e => entryMap.set(e.subjectCode, e));
       
-      const draftEntries = draft.manualEntries || [];
-      draftEntries.forEach(de => {
-        if (!entryMap.has(de.subjectCode)) {
-          entryMap.set(de.subjectCode, de);
-        }
-      });
-      manualEntries = Array.from(entryMap.values());
+      manualEntries = draft.manualEntries || [];
 
-      // Convert draft slots to format used by generator for rules
+      // Convert draft slots to format used by generator
       draft.slots.forEach(slot => {
         if (!rawRules[slot.day]) rawRules[slot.day] = [];
         rawRules[slot.day].push({ start: slot.startTime, end: slot.endTime });
@@ -6938,7 +6894,6 @@ app.post("/api/timetable/generate", async (req, res) => {
         return res.json({ success: false, message: "Timetable rules not configured." });
       }
       rawRules = timeline.rules instanceof Map ? Object.fromEntries(timeline.rules) : timeline.rules;
-      manualEntries = dbManualEntries;
     }
 
     const formatToAMPM = (time24) => {
@@ -6946,7 +6901,7 @@ app.post("/api/timetable/generate", async (req, res) => {
       const [hStr, mStr] = time24.split(':');
       let h = parseInt(hStr);
       const m = parseInt(mStr);
-
+      
       // Academic block fix: Ensure afternoon/evening times (e.g., 1:30) are PM if h is small but likely PM
       // Standard academic hours: 8 AM to 8 PM (08:00 to 20:00)
       // If h is 1-7, it's likely PM (13-19) unless explicitly coded.
@@ -6993,116 +6948,41 @@ app.post("/api/timetable/generate", async (req, res) => {
     });
 
     // 4. Handle Manual Subjects (HIGHEST PRIORITY)
-    console.log(`[generate] Processing ${manualEntries.length} total manual subjects for Sem ${targetSemester}`);
     for (const me of manualEntries) {
-      // STRICT SEMESTER CHECK: Ensure this entry belongs to the current target semester
-      if (me.semester && me.semester !== semString) {
-        console.log(`[generate] SKIP: Manual entry ${me.subjectName} has semester ${me.semester}, need ${semString}`);
-        continue;
+      console.log("Manual subject placed:", me.subjectName);
+      if (!me.slots || me.slots.length === 0) {
+        return res.json({ success: false, message: `HARD CONSTRAINT FAILURE: Manual subject ${me.subjectName} has no slots defined.` });
       }
-      if (!me.semester) {
-        console.log(`[generate] WARNING: Manual entry ${me.subjectName} has NO semester field. Injecting anyway.`);
-      }
-      
-      console.log(`[generate] Injecting manual subject: ${me.subjectName} (${me.semester || 'Draft-based'})`);
-      
-      // If preferredSlots exist (from DB ManualEntry model)
-      if (me.preferredSlots && Array.isArray(me.preferredSlots)) {
-        for (const ps of me.preferredSlots) {
-          const daySlots = timelineRules[ps.day] || [];
-          const time = daySlots[ps.period - 1]; // period is 1-indexed
-
-          if (!time) {
-            console.warn(`[generate] Manual slot out of bounds: ${ps.day} Period ${ps.period}`);
-            continue;
-          }
-
-          const key = `${ps.day}_${time}`;
-          if (!gridSearchMap[key]) {
-            gridSearchMap[key] = { day: ps.day, time: time, entries: [], semester: targetSemester, locked: true, isManual: true };
-            timetable.push(gridSearchMap[key]);
-          } else {
-            gridSearchMap[key].locked = true;
-            gridSearchMap[key].isManual = true;
-            gridSearchMap[key].semester = targetSemester;
-          }
-
-          const gid = me.parallelGroupId || `AutoGroup_${me.subjectCode}_${targetSemester}`;
-
-          gridSearchMap[key].entries.push({
-            subjectName: me.subjectName,
-            subjectCode: me.subjectCode,
-            facultyName: me.facultyName,
-            facultyId: me.facultyId,
-            subjectType: "Manual",
-            parallelGroupId: gid,
-            isManual: true
-          });
-
-          if (me.facultyId) {
-            const fId = me.facultyId.toString();
-            globalFacultyBusyMap.set(`${fId}_${key}`, true);
-            facultyDailyLoadMap.set(`${fId}_${ps.day}`, (facultyDailyLoadMap.get(`${fId}_${ps.day}`) || 0) + 1);
-            // Track subject day usage for manual entries too
-            subjectDayMap.set(`${me.subjectCode}_${ps.day}`, (subjectDayMap.get(`${me.subjectCode}_${ps.day}`) || 0) + 1);
-          }
+      for (const ms of me.slots) {
+        const key = `${ms.day}_${ms.time}`;
+        if (!gridSearchMap[key]) {
+          gridSearchMap[key] = { day: ms.day, time: ms.time, entries: [], locked: true };
+          timetable.push(gridSearchMap[key]);
         }
-      } 
-      // Handle slots from draft/old format if they exist
-      else if (me.slots && me.slots.length > 0) {
-        for (const ms of me.slots) {
-          const key = `${ms.day}_${ms.time}`;
-          if (!gridSearchMap[key]) {
-            gridSearchMap[key] = { day: ms.day, time: ms.time, entries: [], semester: targetSemester, locked: true, isManual: true };
-            timetable.push(gridSearchMap[key]);
-          } else {
-            gridSearchMap[key].locked = true;
-            gridSearchMap[key].isManual = true;
-            gridSearchMap[key].semester = targetSemester;
-          }
-          const gid = me.parallelGroupId || `AutoGroup_${me.subjectCode}_${targetSemester}`;
-
-          gridSearchMap[key].entries.push({
-            subjectName: me.subjectName,
-            subjectCode: me.subjectCode,
-            facultyName: me.facultyName,
-            facultyId: me.facultyId,
-            subjectType: "Manual",
-            parallelGroupId: gid,
-            isManual: true
-          });
-          if (me.facultyId) {
-            const fId = me.facultyId.toString();
-            globalFacultyBusyMap.set(`${fId}_${key}`, true);
-            facultyDailyLoadMap.set(`${fId}_${ms.day}`, (facultyDailyLoadMap.get(`${fId}_${ms.day}`) || 0) + 1);
-            // Track subject day usage for manual entries too
-            subjectDayMap.set(`${me.subjectCode}_${ms.day}`, (subjectDayMap.get(`${me.subjectCode}_${ms.day}`) || 0) + 1);
-          }
+        gridSearchMap[key].entries.push({
+          subjectName: me.subjectName,
+          facultyName: me.facultyName,
+          facultyId: me.facultyId,
+          subjectType: me.subjectType || "Manual",
+          parallelGroupId: me.parallelGroupId
+        });
+        if (me.facultyId) {
+          const fId = me.facultyId.toString();
+          globalFacultyBusyMap.set(`${fId}_${key}`, true);
+          facultyDailyLoadMap.set(`${fId}_${ms.day}`, (facultyDailyLoadMap.get(`${fId}_${ms.day}`) || 0) + 1);
         }
+        console.log("Locked slot:", ms.day, ms.time);
       }
     }
 
     // 4.5. Handle Locked Slots from request
     lockedSlots.forEach(s => {
-      // Filter by semester if the slot has it (added in admin.html per current requirement)
-      if (s.semester) {
-        const sSem = parseInt(s.semester);
-        if (sSem !== targetSemester) {
-          console.log(`[generate] SKIP lockedSlot: Day:${s.day} Time:${s.time} has semester ${sSem}, need ${targetSemester}`);
-          return;
-        }
-      } else {
-        console.log(`[generate] SKIP lockedSlot: Day:${s.day} Time:${s.time} has NO semester field. (Strict filter enabled)`);
-        return; // Skip untagged slots to prevent leakage
-      }
-
       const key = `${s.day}_${s.time}`;
       if (!gridSearchMap[key]) {
-        gridSearchMap[key] = { ...s, semester: targetSemester, locked: true };
+        gridSearchMap[key] = { ...s, locked: true };
         timetable.push(gridSearchMap[key]);
       } else {
         gridSearchMap[key].locked = true; // ensure it's locked if merged
-        gridSearchMap[key].semester = targetSemester;
       }
       (s.entries || []).forEach(e => {
         if (e.facultyId) {
@@ -7135,7 +7015,7 @@ app.post("/api/timetable/generate", async (req, res) => {
       } else if (!gid) {
         gid = `single_${a._id}`;
       }
-
+      
       // Update the internal allocation object so canPlaceAtomic and placeAtomic use the correct gid
       a.parallelGroupId = gid;
 
@@ -7215,82 +7095,16 @@ app.post("/api/timetable/generate", async (req, res) => {
         if (slot && slot.entries.some(e => e.subjectCode === sub.subjectCode)) return { ok: false, reason: `Subject already in slot` };
       }
 
-      // HARD: Lab Day Limit (Max 3 hours per subject per day)
-      if (group.isLab) {
-        const checkedCodes = new Set();
-        for (const sub of group.subjects) {
-          const sCode = sub.subjectCode || sub.subjectId.code;
-          if (checkedCodes.has(sCode)) continue;
-          checkedCodes.add(sCode);
-          
-          const current = subjectDayMap.get(`${sCode}_${day}`) || 0;
-          if (current >= 3) {
-            return { ok: false, reason: "Lab day limit reached (Hard)" };
-          }
-        }
-      }
-
       if (softConstraints) {
         // SOFT: Faculty Daily Load
         for (const sub of group.subjects) {
           const fId = (sub.facultyId._id || sub.facultyId).toString();
           if ((facultyDailyLoadMap.get(`${fId}_${day}`) || 0) >= MAX_DAILY_FACULTY_LOAD) return { ok: false, reason: "Faculty daily limit reached", soft: true };
         }
-
-        // SOFT: Theory Subject Spread (no more than 2 slots per day)
+        // SOFT: Subject Spread (no more than 2 slots of same theory subject per day)
         if (!group.isLab) {
-          const checkedCodes = new Set();
           for (const sub of group.subjects) {
-            const sCode = sub.subjectCode || sub.subjectId.code;
-            if (checkedCodes.has(sCode)) continue;
-            checkedCodes.add(sCode);
-
-            const current = subjectDayMap.get(`${sCode}_${day}`) || 0;
-            if (current >= 2) {
-              console.log(`[canPlaceAtomic] REJECT ${sCode} on ${day}: current ${current} >= limit 2`);
-              return { ok: false, reason: "Theory subject day limit reached", soft: true };
-            }
-          }
-        }
-
-        // HARD: Lab Contiguity Limit (Max 3 continuous periods)
-        if (group.isLab) {
-          const daySlots = timelineRules[day] || [];
-          const timeIdx = daySlots.indexOf(time);
-          if (timeIdx !== -1) {
-            let continuousCount = 1;
-
-            // Check previous slots
-            for (let i = timeIdx - 1; i >= 0; i--) {
-              // Stop if crossing session boundary (every 3 periods)
-              if (Math.floor(i / 3) !== Math.floor(timeIdx / 3)) break;
-
-              const prevKey = `${day}_${daySlots[i]}`;
-              const prevSlot = gridSearchMap[prevKey];
-              if (prevSlot && prevSlot.entries.some(e => e.parallelGroupId === group.groupId || (e.subjectCode === group.subjects[0].subjectCode))) {
-                continuousCount++;
-              } else {
-                break;
-              }
-            }
-
-            // Check next slots
-            for (let i = timeIdx + 1; i < daySlots.length; i++) {
-              // Stop if crossing session boundary (every 3 periods)
-              if (Math.floor(i / 3) !== Math.floor(timeIdx / 3)) break;
-
-              const nextKey = `${day}_${daySlots[i]}`;
-              const nextSlot = gridSearchMap[nextKey];
-              if (nextSlot && nextSlot.entries.some(e => e.parallelGroupId === group.groupId || (e.subjectCode === group.subjects[0].subjectCode))) {
-                continuousCount++;
-              } else {
-                break;
-              }
-            }
-
-            if (continuousCount > 3) {
-              return { ok: false, reason: "Lab continuous block exceeds 3 periods", soft: false };
-            }
+            if ((subjectDayMap.get(`${sub.subjectId.code}_${day}`) || 0) >= 2) return { ok: false, reason: "Subject day limit reached", soft: true };
           }
         }
       }
@@ -7314,16 +7128,12 @@ app.post("/api/timetable/generate", async (req, res) => {
           subjectCode: sub.subjectId.code,
           subjectAbbreviation: sub.subjectId.abbreviation || sub.subjectId.code,
           facultyName: sub.facultyName,
-          subjectType: normalizeSubjectType(sub.subjectId.type),
+          subjectType: sub.subjectId.type,
           parallelGroupId: sub.parallelGroupId
         });
         globalFacultyBusyMap.set(`${facId}_${slotKey}`, true);
         facultyDailyLoadMap.set(`${facId}_${day}`, (facultyDailyLoadMap.get(`${facId}_${day}`) || 0) + 1);
-      });
-      // Increment subject day occupancy ONLY ONCE per unique subject code per slot
-      const uniqueCodesInSlot = new Set(group.subjects.map(s => s.subjectCode || s.subjectId.code));
-      uniqueCodesInSlot.forEach(code => {
-        subjectDayMap.set(`${code}_${day}`, (subjectDayMap.get(`${code}_${day}`) || 0) + 1);
+        subjectDayMap.set(`${sub.subjectId.code}_${day}`, (subjectDayMap.get(`${sub.subjectId.code}_${day}`) || 0) + 1);
       });
       group.remainingHours--;
       audit.totalAllocated++;
@@ -7335,18 +7145,15 @@ app.post("/api/timetable/generate", async (req, res) => {
       while (group.remainingHours >= 3) {
         let placed = false;
         const shuffledDays = [...daysOrder].sort(() => Math.random() - 0.5);
-
+        
         for (const day of shuffledDays) {
           const daySlots = timelineRules[day] || [];
           if (daySlots.length < 3) continue;
-
+          
           for (let i = 0; i <= daySlots.length - 3; i++) {
-            // Lab Session Constraint: Block must not cross the Noon break (every 3 periods)
-            if (Math.floor(i / 3) !== Math.floor((i + 2) / 3)) continue;
-
             const block = daySlots.slice(i, i + 3);
             const canFit = block.every(t => canPlaceAtomic(group, day, t, true).ok);
-
+            
             if (canFit) {
               block.forEach(t => placeAtomic(group, day, t));
               placed = true;
@@ -7358,7 +7165,7 @@ app.post("/api/timetable/generate", async (req, res) => {
         if (!placed) {
           // If 3-hour block fails, try smaller if applicable, or fail if it's a hard requirement
           console.log(`Skipping block allocation for ${group.groupId}: No 3-hour window found.`);
-          break;
+          break; 
         }
       }
     }
@@ -7407,7 +7214,7 @@ app.post("/api/timetable/generate", async (req, res) => {
         if (!placed) {
           console.log(`Skipping slot due to conflict: No valid slot for ${group.groupId}`);
           audit.skipped.push(group.groupId);
-          break;
+          break; 
         }
       }
     }
@@ -7417,7 +7224,7 @@ app.post("/api/timetable/generate", async (req, res) => {
     console.log("Total subjects allocated:", audit.totalAllocated);
     console.log("Total slots used:", timetable.length);
     console.log("Skipped/Failed:", audit.skipped.length > 0 ? audit.skipped.join(", ") : "None");
-
+    
     // Final check for Hard Constraints (Parallel mismatch)
     const validationErrors = [];
     groupList.forEach(g => {
@@ -7538,7 +7345,7 @@ app.get("/api/timetable/load/:id", async (req, res) => {
 app.post("/api/timetable/delete", async (req, res) => {
   try {
     const { academicYear, term, semester } = req.body;
-
+    
     if (!academicYear || !term || !semester) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
     }
@@ -7550,9 +7357,9 @@ app.post("/api/timetable/delete", async (req, res) => {
       isDraft: true
     });
 
-    res.json({
-      success: true,
-      message: `Deleted ${result.deletedCount} drafts.`
+    res.json({ 
+      success: true, 
+      message: `Deleted ${result.deletedCount} drafts.` 
     });
   } catch (err) {
     console.error("Delete TT error:", err);
@@ -7564,7 +7371,7 @@ app.post("/api/timetable/delete", async (req, res) => {
 app.get("/api/timetable/current-draft", async (req, res) => {
   try {
     const { academicYear, term, semester } = req.query;
-
+    
     const query = { isDraft: true };
     if (academicYear) query.academicYear = academicYear.trim();
     if (term) query.term = term.trim();
@@ -7923,9 +7730,7 @@ async function getFacultySchedule(day, term, startTime, endTime) {
             if (slotStartMin < selEndMin && slotEndMin > selStartMin) {
               if (slot.entries) {
                 slot.entries.forEach(e => {
-                  if (e.facultyId) {
-                    busyFacultyIds.add(e.facultyId.toString());
-                  }
+                  if (e.facultyId) busyFacultyIds.add(e.facultyId.toString());
                 });
               }
             }
@@ -7963,8 +7768,8 @@ async function getFreeFaculty(date, timeSlot) {
   // 3. Filter out those with registered absences
   const startOfDay = new Date(yyyy, mm - 1, dd, 0, 0, 0, 0);
   const endOfDay = new Date(yyyy, mm - 1, dd, 23, 59, 59, 999);
-  const absences = await Absence.find({
-    date: { $gte: startOfDay, $lte: endOfDay }
+  const absences = await Absence.find({ 
+    date: { $gte: startOfDay, $lte: endOfDay } 
   }).lean();
 
   const selStartMin = toMinutes(startTime);
@@ -8022,15 +7827,15 @@ app.get("/available-faculty", async (req, res) => {
 function toMinutes(timeStr) {
   if (!timeStr) return 0;
   const s = timeStr.trim();
-
+  
   // Try to find a HH:MM or H:MM pattern
   // Matches "09:30", "14:20", "9:00"
   const timeMatch = s.match(/(\d{1,2}):(\d{2})/);
   if (!timeMatch) return 0;
-
+  
   let hours = parseInt(timeMatch[1]);
   const minutes = parseInt(timeMatch[2]);
-
+  
   // Check for AM/PM (case insensitive)
   const ampmMatch = s.match(/(AM|PM)/i);
   if (ampmMatch) {
@@ -8040,7 +7845,7 @@ function toMinutes(timeStr) {
   } else {
     // If no AM/PM, but hour is 1-7, it's likely PM in a school context
     // but 8-12 is likely AM. This is a heuristic.
-    if (hours >= 1 && hours <= 7) hours += 12;
+    if (hours >= 1 && hours <= 7) hours += 12; 
   }
 
   return hours * 60 + minutes;
@@ -8075,7 +7880,7 @@ app.get("/api/admin/faculty-availability", async (req, res) => {
             if (parts.length === 2) {
               const slotStartMin = toMinutes(parts[0]);
               const slotEndMin = toMinutes(parts[1]);
-
+              
               if (slotStartMin < selEndMin && slotEndMin > selStartMin) {
                 if (slot.entries) {
                   slot.entries.forEach(entry => {
@@ -8095,7 +7900,7 @@ app.get("/api/admin/faculty-availability", async (req, res) => {
 
     // 2. FETCH ALL APPROVED FACULTY
     const allFaculty = await Faculty.find({ approved: true, ...NON_TEST_FACULTY_FILTER }).lean();
-
+    
     // 3. REMOVE BUSY FACULTY
     const freeFaculty = allFaculty.filter(f => !busyFacultyIds.includes(f._id.toString()));
 
@@ -8120,8 +7925,8 @@ app.get("/api/admin/faculty-availability", async (req, res) => {
     }).map(a => a.facultyId.toString());
 
     // 5. APPLY FINAL FILTER
-    const finalAvailableFaculty = freeFaculty.filter(f =>
-      !absentFacultyIds.includes(f._id.toString())
+    const finalAvailableFaculty = freeFaculty.filter(f => 
+       !absentFacultyIds.includes(f._id.toString())
     );
 
     // DEBUG LOGS AS REQUESTED
@@ -8199,11 +8004,11 @@ app.get("/api/student/get-timetable", async (req, res) => {
     const slots = (timetableDoc.slots || []).map(slot => {
       const entries = (slot.entries && slot.entries.length > 0)
         ? slot.entries.map(e => ({
-          subjectName: e.subjectName || "",
-          facultyName: e.facultyName || "",
-          subjectCode: e.subjectCode || "",
-          subjectType: normalizeSubjectType(e.subjectType) // Consistency with database
-        }))
+            subjectName: e.subjectName || "",
+            facultyName: e.facultyName || "",
+            subjectCode: e.subjectCode || "",
+            subjectType: e.subjectType || ""
+          }))
         : [];
 
       return {
@@ -8263,73 +8068,6 @@ async function cleanupOldSessions() {
 
 // Run cleanup every hour
 setInterval(cleanupOldSessions, 60 * 60 * 1000);
-
-/* ================= MANUAL SUBJECT ENTRY APIs ================= */
-
-// Save a new manual entry
-app.post("/api/manual-entries", async (req, res) => {
-  try {
-    const { academicYear, semesterType, semester, subjectName, subjectCode, facultyName, weeklyHours, preferredSlots } = req.body;
-
-    // Validation
-    if (!academicYear || !semesterType || !semester || !subjectName || !subjectCode || !facultyName || !weeklyHours || !preferredSlots) {
-      return res.status(400).json({ success: false, message: "All fields are required." });
-    }
-
-    if (!Array.isArray(preferredSlots) || preferredSlots.length === 0) {
-      return res.status(400).json({ success: false, message: "At least one preferred slot is required." });
-    }
-
-    const newEntry = new ManualEntry({
-      academicYear,
-      semesterType,
-      semester,
-      subjectName,
-      subjectCode,
-      facultyName,
-      weeklyHours,
-      preferredSlots
-    });
-
-    await newEntry.save();
-    res.status(201).json({ success: true, entry: newEntry });
-  } catch (err) {
-    console.error("Error saving manual entry:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Fetch manual entries with filters
-app.get("/api/manual-entries", async (req, res) => {
-  try {
-    const { academicYear, semesterType, semester } = req.query;
-    const query = {};
-    if (academicYear) query.academicYear = academicYear;
-    if (semesterType) query.semesterType = semesterType;
-    if (semester) query.semester = semester;
-
-    const entries = await ManualEntry.find(query).sort({ createdAt: -1 });
-    res.json({ success: true, entries });
-  } catch (err) {
-    console.error("Error fetching manual entries:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Delete a specific manual entry
-app.delete("/api/manual-entries/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const deleted = await ManualEntry.findByIdAndDelete(id);
-    if (!deleted) {
-      return res.status(404).json({ success: false, message: "Entry not found." });
-    }
-    res.json({ success: true, message: "Entry deleted successfully." });
-  } catch (err) {
-    console.error("Error deleting manual entry:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
 
 app.listen(PORT, () =>
   console.log(`✅ Server running at http://localhost:${PORT}`)

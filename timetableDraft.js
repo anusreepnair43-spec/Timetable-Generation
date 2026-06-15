@@ -32,7 +32,7 @@ const TimetableDraftSchema = new mongoose.Schema({
         subjectName: { type: String, required: true },
         facultyName: { type: String },
         facultyId: { type: mongoose.Schema.Types.ObjectId, ref: "Faculty" },
-        subjectType: { type: String, enum: ["Theory", "Lab", "Project"] },
+        subjectType: { type: String, enum: ["Theory", "Lab", "Project", "Manual"] },
         weeklyHours: { type: Number },
         parallelGroupId: { type: String, trim: true },
         slots: [{

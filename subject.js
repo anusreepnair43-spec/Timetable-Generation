@@ -12,7 +12,7 @@ const subjectSchema = new mongoose.Schema({
   abbreviation: { type: String },
   type: {
     type: String,
-    enum: ["Theory", "Lab", "Project"],
+    enum: ["Theory", "Lab", "Project", "Manual"],
     required: true
   },
   hours: {

@@ -4,7 +4,7 @@ const adminSchema = new mongoose.Schema({
   username: String,
   password: String,
 
-  // 👇 ADD THESE
+
   resetToken: String,
   resetTokenExpiry: Date
 });

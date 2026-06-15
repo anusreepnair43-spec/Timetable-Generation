@@ -12,8 +12,8 @@ const slotSchema = new mongoose.Schema({
     subjectAbbreviation: { type: String },
     subjectType: { 
       type: String, 
-      enum: ["THEORY", "LAB", "MANUAL", "PROJECT"], 
-      default: "THEORY" 
+      enum: ["Theory", "Lab", "Manual", "Project"], 
+      default: "Theory" 
     }
   }],
   roomId: { type: mongoose.Schema.Types.ObjectId, ref: "Room" },
